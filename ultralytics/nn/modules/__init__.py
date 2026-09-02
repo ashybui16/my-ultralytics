@@ -107,6 +107,15 @@ from .transformer import (
     TransformerEncoderLayer,
     TransformerLayer,
 )
+from .custom import (
+    PConv,
+    SPDConv,
+    Res2Block,
+    CSPRes2B,
+    LEAF,
+    LEAFT,
+    ELAN,
+)
 
 __all__ = (
     "AIFI",
@@ -191,4 +200,11 @@ __all__ = (
     "YOLOESegment",
     "YOLOESegment26",
     "v10Detect",
+    "PConv",
+    "SPDConv",
+    "Res2Block",
+    "CSPRes2B",
+    "LEAF",
+    "LEAFT",
+    "ELAN",
 )
