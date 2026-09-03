@@ -81,6 +81,8 @@ from ultralytics.nn.modules import (
     LEAF,
     LEAFT,
     ELAN,
+    GhostPConv,
+    CoordAtt,
 )
 from ultralytics.utils import (
     DEFAULT_CFG_DICT,
@@ -2039,6 +2041,7 @@ def parse_model(d, ch, verbose=True):
             LEAF,
             LEAFT,
             ELAN,
+            GhostPConv,
         }
     )
     repeat_modules = frozenset(  # modules with 'repeat' arguments
@@ -2161,7 +2164,7 @@ def parse_model(d, ch, verbose=True):
             c2 = args[0]
             c1 = ch[f]
             args = [*args[1:]]
-        elif m is PConv:
+        elif m in frozenset({PConv, CoordAtt}):
             c1 = c2 = ch[f]
             args = [c1, *args]
         else:

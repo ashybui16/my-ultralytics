@@ -13,6 +13,8 @@ __all__ = (
     "LEAF",
     "LEAFT",
     "ELAN",
+    "GhostPConv",
+    "CoordAtt",
 )
 
 
@@ -69,53 +71,43 @@ class Res2Block(nn.Module):
         c1: int,
         c2: int,
         shortcut: bool = True,
-        base_width: int = 16,
-        scale: int = 4,
     ):
         super().__init__()
-        self.scale = scale
         self.add = shortcut and c1 == c2
 
-        width = int(math.floor(c2 * (base_width/64.0)))
-        self.conv1 = Conv(c1, width*scale, 1)
-
-        self.nums = 1 if scale == 1 else scale - 1
-        self.convs = nn.ModuleList(Conv(width, width, 3) for _ in range(self.nums))
+        self.c_ =  c1 // 4
+        self.convs = nn.ModuleList(Conv(self.c_, self.c_, 3) for _ in range(3))
         
-        self.conv2 = Conv(width*scale, c2, 1, act=False)
+        self.conv2 = Conv(c1, c2, 1, act=False)
         self.act = nn.SiLU(inplace=True)
-        self.scale = scale
-        self.width = width
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         residual = x if self.add else None
 
-        projected = self.conv1(x)
-        splits = torch.split(projected, self.width, dim=1)
+        splits = torch.split(x, self.c_, dim=1)
 
         out = None
         branch = None
-        for i in range(self.nums):
+        for i in range(3):
             branch = splits[i] if i == 0 else branch + splits[i]
             branch = self.convs[i](branch)
             out = branch if i == 0 else torch.cat((out, branch), dim=1)
 
-        if self.scale != 1:
-            out = torch.cat((out, splits[self.nums]), dim=1)
+        out = torch.cat((out, splits[3]), dim=1)
 
         out = self.conv2(out)
         if residual is not None:
             out = out + residual
-        return self.silu(out)
+        return self.act(out)
 
 
 class CSPRes2B(C3):
     """CSPRes2B from LEAF-YOLO."""
 
-    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5, baseWidth=16, scale=4):
+    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):
         super().__init__(c1, c2, n, shortcut, g, e)
         c_ = int(c2 * e)
-        self.m = nn.Sequential(*(Res2Block(c_, c_, shortcut, baseWidth, scale) for _ in range(n)))
+        self.m = nn.Sequential(*(Res2Block(c_, c_, shortcut) for _ in range(n)))
 
 
 class LEAF(nn.Module):
@@ -130,8 +122,6 @@ class LEAF(nn.Module):
         g: int = 1,
         e: float = 0.5,
         n_div: int = 4,
-        baseWidth: int = 16,
-        scale: int = 4,
     ):
         super().__init__()
 
@@ -146,8 +136,6 @@ class LEAF(nn.Module):
             shortcut=shortcut,
             g=g,
             e=e,
-            baseWidth=baseWidth,
-            scale=scale,
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -171,15 +159,14 @@ class LEAFT(nn.Module):
         shortcut: bool = True,
         g: int = 1,
         e: float = 0.5,
-        baseWidth: int = 16,
-        scale: int = 4,
+        n_div: int = 4,
     ):
         super().__init__()
 
         c_ = int(c2 * e)
         self.cv1 = Conv(c1, c_, 1, 1)
         self.cv2 = Conv(c1, c_, 1, 1)
-        self.convs = nn.ModuleList(Conv(c_, c_, 3) for _ in range(2))
+        self.pconvs = nn.ModuleList(PConv(c_, k=3, n_div=n_div) for _ in range(2))
         self.csp = CSPRes2B(
             4 * c_,
             c2,
@@ -187,23 +174,74 @@ class LEAFT(nn.Module):
             shortcut=shortcut,
             g=g,
             e=e,
-            baseWidth=baseWidth,
-            scale=scale,
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         first = self.cv1(x)
         second = self.cv2(x)
         states = [second]
-        for conv in self.convs:
-            states.append(conv(states[-1]))
+        for pconv in self.pconvs:
+            states.append(pconv(states[-1]))
 
         return self.csp(torch.cat((first, *states), dim=1))
 
 class ELAN(C3):
     """ELAN from LEAF-YOLO."""
 
-    def __init__(self, c1, c2, n=2, shortcut=True, g=1, e=0.5):
+    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5, n_div=4):
         super().__init__(c1, c2, n, shortcut, g, e)
         c_ = int(c2 * e)
-        self.m = nn.Sequential(*(Conv(c_, c_, 3) for _ in range(n)))
+        self.m = nn.Sequential(*(PConv(c_, 3, n_div=n_div) for _ in range(n)))
+
+
+class GhostPConv(nn.Module):
+    """GhostConv using PConv."""
+
+    def __init__(self, c1, c2, k=3, s=2):
+        super().__init__()
+        c_ = c2 // 2
+        self.cv1 = Conv(c1, c_, k, s)
+        self.cv2 = PConv(c_, k, n_div=4)
+
+    def forward(self, x):
+        y = self.cv1(x)
+        return torch.cat((y, self.cv2(y)), 1)
+
+
+class CoordAtt(nn.Module):
+    """Coordinate Attention."""
+    def __init__(self, c1, r=32):
+        super().__init__()
+        self.pool_h = nn.AdaptiveAvgPool2d((None, 1))
+        self.pool_w = nn.AdaptiveAvgPool2d((1, None))
+
+        c_ = max(8, c1 // r)
+
+        self.conv1 = nn.Conv2d(c1, c_, kernel_size=1, stride=1, padding=0)
+        self.bn1 = nn.BatchNorm2d(c_)
+        self.act = nn.SiLU()
+
+        self.conv_h = nn.Conv2d(c_, c1, kernel_size=1, stride=1, padding=0)
+        self.conv_w = nn.Conv2d(c_, c1, kernel_size=1, stride=1, padding=0)
+
+    def forward(self, x):
+        identity = x
+
+        _, _, h, w = x.size()
+        x_h = self.pool_h(x)
+        x_w = self.pool_w(x).permute(0, 1, 3, 2)
+
+        y = torch.cat([x_h, x_w], dim=2)
+        y = self.conv1(y)
+        y = self.bn1(y)
+        y = self.act(y)
+
+        x_h, x_w = torch.split(y, [h, w], dim=2)
+        x_w = x_w.permute(0, 1, 3, 2)
+
+        a_h = self.conv_h(x_h).sigmoid()
+        a_w = self.conv_w(x_w).sigmoid()
+
+        out = identity * a_w * a_h
+
+        return out

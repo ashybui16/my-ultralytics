@@ -115,6 +115,8 @@ from .custom import (
     LEAF,
     LEAFT,
     ELAN,
+    GhostPConv,
+    CoordAtt,
 )
 
 __all__ = (
@@ -207,4 +209,6 @@ __all__ = (
     "LEAF",
     "LEAFT",
     "ELAN",
+    "GhostPConv",
+    "CoordAtt"
 )
