@@ -1,0 +1,54 @@
+# Parameters
+nc: 80 # number of classes
+end2end: True # whether to use end-to-end mode
+reg_max: 1 # DFL bins
+
+# backbone
+backbone:
+  # [from, repeats, module, args]
+  - [-1, 1, Conv, [32, 3, 2]] # 0-P1/2
+
+  - [-1, 1, Conv, [64, 3, 2]] 
+  - [-1, 1, LEAF, [64]] # 2-P2/4
+
+  - [-1, 1, MGC, [128]] 
+  - [-1, 1, LEAF, [128]] # 4-P3/8
+
+  - [-1, 1, MGC, [256]]
+  - [-1, 1, LEAF, [256]] # 6-P4/16
+
+  - [-1, 1, MGC, [512]]
+  - [-1, 1, LEAF, [256]]
+  - [-1, 1, SPPF, [256, 5, 3, True]]
+  - [-1, 2, C2PSA, [256]] # 10-P5/32
+
+# head
+head:
+  - [-1, 1, CoordBlock, [256]]
+  - [-1, 1, nn.Upsample, [None, 2, "nearest"]]
+  - [[-1, 6], 1, Concat, [1]]
+  - [-1, 1, LEAFT, [256]] # 14-P4/16
+
+  - [-1, 1, CoordBlock, [128]]
+  - [-1, 1, nn.Upsample, [None, 2, "nearest"]]
+  - [[-1, 4], 1, Concat, [1]]
+  - [-1, 1, LEAFT, [128]] # 18-P3/8
+
+  - [-1, 1, CoordBlock, [64]]
+  - [-1, 1, nn.Upsample, [None, 2, "nearest"]]
+  - [[-1, 2], 1, Concat, [1]]
+  - [-1, 1, LEAFT, [64]] # 22 (P2/4-xsmall)
+
+  - [-1, 1, GhostConv, [128, 3, 2]]
+  - [[-1, 18], 1, Concat, [1]]
+  - [-1, 2, ELAN, [128]] # 25 (P3/8-small)
+
+  - [-1, 1, GhostConv, [256, 3, 2]]
+  - [[-1, 14], 1, Concat, [1]]
+  - [-1, 2, ELAN, [256]] # 28 (P4/16-medium)
+
+  - [-1, 1, GhostConv, [512, 3, 2]]
+  - [[-1, 10], 1, Concat, [1]]
+  - [-1, 2, ELAN, [256]] # 31 (P5/32-large)
+
+  - [[22, 25, 28, 31], 1, Detect, [nc]] # Detect(P2, P3, P4, P5)
