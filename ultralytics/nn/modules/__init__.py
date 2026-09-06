@@ -116,7 +116,11 @@ from .custom import (
     LEAFT,
     ELAN,
     GhostPConv,
-    CoordAtt,
+    CoordBlock,
+    MGC,
+    PLEAFT,
+    PELAN,
+    GPDetect,
 )
 
 __all__ = (
@@ -210,5 +214,9 @@ __all__ = (
     "LEAFT",
     "ELAN",
     "GhostPConv",
-    "CoordAtt"
+    "CoordBlock",
+    "MGC",
+    "PLEAFT",
+    "PELAN",
+    "GPDetect",
 )

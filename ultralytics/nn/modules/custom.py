@@ -1,9 +1,12 @@
 import torch
 import torch.nn as nn
-import math
+import torch.nn.functional as F
 
-from ultralytics.nn.modules.conv import autopad, Conv
+from ultralytics.nn.modules.conv import autopad, Conv, GhostConv
+from ultralytics.nn.modules.head import Detect
 from ultralytics.nn.modules.block import C3
+
+import copy
 
 __all__ = (
     "PConv",
@@ -14,7 +17,11 @@ __all__ = (
     "LEAFT",
     "ELAN",
     "GhostPConv",
-    "CoordAtt",
+    "CoordBlock",
+    "MGC",
+    "PLEAFT",
+    "PELAN",
+    "GPDetect",
 )
 
 
@@ -75,17 +82,20 @@ class Res2Block(nn.Module):
         super().__init__()
         self.add = shortcut and c1 == c2
 
-        self.c_ =  c1 // 4
+        self.conv1 = Conv(c1, c2, 1)
+
+        self.c_ =  c2 // 4
         self.convs = nn.ModuleList(Conv(self.c_, self.c_, 3) for _ in range(3))
         
-        self.conv2 = Conv(c1, c2, 1, act=False)
+        self.conv2 = Conv(c2, c2, 1, act=False)
         self.act = nn.SiLU(inplace=True)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         residual = x if self.add else None
 
-        splits = torch.split(x, self.c_, dim=1)
+        x = self.conv1(x)
 
+        splits = torch.split(x, self.c_, dim=1)
         out = None
         branch = None
         for i in range(3):
@@ -96,8 +106,10 @@ class Res2Block(nn.Module):
         out = torch.cat((out, splits[3]), dim=1)
 
         out = self.conv2(out)
+
         if residual is not None:
             out = out + residual
+
         return self.act(out)
 
 
@@ -141,6 +153,7 @@ class LEAF(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         first = self.cv1(x)
         second = self.cv2(x)
+
         states = [second]
         for pconv in self.pconvs:
             states.append(pconv(states[-1]))
@@ -159,14 +172,13 @@ class LEAFT(nn.Module):
         shortcut: bool = True,
         g: int = 1,
         e: float = 0.5,
-        n_div: int = 4,
     ):
         super().__init__()
 
         c_ = int(c2 * e)
         self.cv1 = Conv(c1, c_, 1, 1)
         self.cv2 = Conv(c1, c_, 1, 1)
-        self.pconvs = nn.ModuleList(PConv(c_, k=3, n_div=n_div) for _ in range(2))
+        self.convs = nn.ModuleList(Conv(c_, c_, 3) for _ in range(2))
         self.csp = CSPRes2B(
             4 * c_,
             c2,
@@ -179,33 +191,78 @@ class LEAFT(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         first = self.cv1(x)
         second = self.cv2(x)
+
         states = [second]
-        for pconv in self.pconvs:
-            states.append(pconv(states[-1]))
+        for conv in self.convs:
+            states.append(conv(states[-1]))
 
         return self.csp(torch.cat((first, *states), dim=1))
 
 class ELAN(C3):
     """ELAN from LEAF-YOLO."""
 
-    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5, n_div=4):
+    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):
         super().__init__(c1, c2, n, shortcut, g, e)
         c_ = int(c2 * e)
-        self.m = nn.Sequential(*(PConv(c_, 3, n_div=n_div) for _ in range(n)))
+        self.m = nn.Sequential(*(Conv(c_, c_, 3) for _ in range(n)))
 
 
 class GhostPConv(nn.Module):
     """GhostConv using PConv."""
 
-    def __init__(self, c1, c2, k=3, s=2):
+    def __init__(self, c1, c2, k=3, s=1, n_div=4):
         super().__init__()
         c_ = c2 // 2
         self.cv1 = Conv(c1, c_, k, s)
-        self.cv2 = PConv(c_, k, n_div=4)
+        self.cv2 = PConv(c_, k, n_div)
 
     def forward(self, x):
         y = self.cv1(x)
         return torch.cat((y, self.cv2(y)), 1)
+
+
+class AddCoords(nn.Module):
+    def __init__(self, with_r=False):
+        super().__init__()
+        self.with_r = with_r
+
+    def forward(self, input_tensor):
+        batch_size, _, dim_y, dim_x = input_tensor.shape
+        device = input_tensor.device
+        dtype = input_tensor.dtype
+
+        y_coord = torch.linspace(-1, 1, dim_y, device=device, dtype=dtype)
+        x_coord = torch.linspace(-1, 1, dim_x, device=device, dtype=dtype)
+
+        y_grid, x_grid = torch.meshgrid(y_coord, x_coord, indexing='ij')
+
+        y_grid = y_grid.unsqueeze(0).unsqueeze(0).expand(batch_size, -1, -1, -1)
+        x_grid = x_grid.unsqueeze(0).unsqueeze(0).expand(batch_size, -1, -1, -1)
+
+        coords = [input_tensor, y_grid, x_grid]
+
+        if self.with_r:
+            r_grid = torch.sqrt(torch.pow(x_grid, 2) + torch.pow(y_grid, 2))
+            coords.append(r_grid)
+
+        return torch.cat(coords, dim=1)
+
+
+class CoordConv(nn.Module):
+    """Coordinate Convolution."""
+    def __init__(self, c1, c2, k=1, s=1, with_r=False):
+        super().__init__()
+        self.addcoords = AddCoords(with_r=with_r)
+        c1 += 2
+        if with_r:
+            c1 += 1
+        
+        self.conv = Conv(c1, c2, k, s)
+
+    def forward(self, x):
+        x = self.addcoords(x)
+        x = self.conv(x)
+        return x
 
 
 class CoordAtt(nn.Module):
@@ -217,12 +274,12 @@ class CoordAtt(nn.Module):
 
         c_ = max(8, c1 // r)
 
-        self.conv1 = nn.Conv2d(c1, c_, kernel_size=1, stride=1, padding=0)
+        self.conv1 = nn.Conv2d(c1, c_, 1, 1, bias=False)
         self.bn1 = nn.BatchNorm2d(c_)
         self.act = nn.SiLU()
 
-        self.conv_h = nn.Conv2d(c_, c1, kernel_size=1, stride=1, padding=0)
-        self.conv_w = nn.Conv2d(c_, c1, kernel_size=1, stride=1, padding=0)
+        self.conv_h = nn.Conv2d(c_, c1, 1, 1)
+        self.conv_w = nn.Conv2d(c_, c1, 1, 1)
 
     def forward(self, x):
         identity = x
@@ -245,3 +302,105 @@ class CoordAtt(nn.Module):
         out = identity * a_w * a_h
 
         return out
+
+
+class CoordBlock(nn.Module):
+    """CoordBlock from LEAF-YOLO."""
+    def __init__(self, c1, c2, k=1, s=1, with_r=False):
+        super().__init__()
+        self.coordconv = CoordConv(c1, c2, k, s, with_r)
+        self.coordatt = CoordAtt(c2)
+    def forward(self, x):
+        return self.coordatt(self.coordconv(x))
+
+
+class MGC(nn.Module):
+    """MGC from LEAF-YOLO."""
+    def __init__(self, c1, c2):
+        super().__init__()
+        self.c_ = c2 // 2
+
+        self.mp = nn.MaxPool2d(2, 2)
+        self.conv1 = Conv(c1, self.c_, 1)
+
+        self.conv2 = Conv(c1, self.c_, 1)
+        self.conv3 = GhostConv(self.c_, self.c_, 3, 2)
+
+    def forward(self, x):
+        y1 = self.mp(x)
+        y1 = self.conv1(y1)
+
+        y2 = self.conv2(x)
+        y2 = self.conv3(y2)
+
+        return torch.cat((y1, y2), dim=1)
+
+
+class PLEAFT(nn.Module):
+    """LEAF-T using PConv."""
+
+    def __init__(
+        self,
+        c1: int,
+        c2: int,
+        n: int = 1,
+        shortcut: bool = True,
+        g: int = 1,
+        e: float = 0.5,
+        n_div: int = 4,
+    ):
+        super().__init__()
+
+        c_ = int(c2 * e)
+        self.cv1 = Conv(c1, c_, 1, 1)
+        self.cv2 = Conv(c1, c_, 1, 1)
+        self.pconvs = nn.ModuleList(PConv(c_, 3, n_div) for _ in range(2))
+        self.csp = CSPRes2B(
+            4 * c_,
+            c2,
+            n=n,
+            shortcut=shortcut,
+            g=g,
+            e=e,
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        first = self.cv1(x)
+        second = self.cv2(x)
+
+        states = [second]
+        for pconv in self.pconvs:
+            states.append(pconv(states[-1]))
+
+        return self.csp(torch.cat((first, *states), dim=1))
+
+
+class PELAN(C3):
+    """ELAN using PConv."""
+
+    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5, n_div=4):
+        super().__init__(c1, c2, n, shortcut, g, e)
+        c_ = int(c2 * e)
+        self.m = nn.Sequential(*(PConv(c_, 3, n_div) for _ in range(n)))
+
+
+class GPDetect(Detect):
+    def __init__(self, nc=80, reg_max=16, end2end=False, ch=()):
+        super().__init__(nc, reg_max, end2end, ch)
+
+        c2 = max((16, ch[0] // 4, self.reg_max * 4))
+        c3 = max(ch[0], min(self.nc, 100))
+
+        self.cv2 = nn.ModuleList(
+            nn.Sequential(GhostPConv(x, c2, 3), GhostPConv(c2, c2, 3), nn.Conv2d(c2, 4 * self.reg_max, 1))
+            for x in ch
+        )
+
+        self.cv3 = nn.ModuleList(
+            nn.Sequential(GhostPConv(x, c3, 3), GhostPConv(c3, c3, 3), nn.Conv2d(c3, self.nc, 1))
+            for x in ch
+        )
+
+        if end2end:
+            self.one2one_cv2 = copy.deepcopy(self.cv2)
+            self.one2one_cv3 = copy.deepcopy(self.cv3)
