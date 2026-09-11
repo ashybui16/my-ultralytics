@@ -217,6 +217,8 @@ CFG_FLOAT_KEYS = frozenset(
         "time",
         "workspace",
         "batch",
+        "inner_ratio",
+        "shape_scale",
     }
 )
 CFG_FRACTION_KEYS = frozenset(
@@ -308,7 +310,7 @@ CFG_BOOL_KEYS = frozenset(
         "cls_remap",
     }
 )
-CFG_STR_KEYS = frozenset({"optimizer", "split", "copy_paste_mode", "auto_augment"})
+CFG_STR_KEYS = frozenset({"optimizer", "split", "copy_paste_mode", "auto_augment", "iou_loss"})
 
 
 def cfg2dict(cfg: str | Path | dict | SimpleNamespace) -> dict:

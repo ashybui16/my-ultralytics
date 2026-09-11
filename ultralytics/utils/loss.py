@@ -111,10 +111,125 @@ class DFLoss(nn.Module):
 class BboxLoss(nn.Module):
     """Criterion class for computing training losses for bounding boxes."""
 
-    def __init__(self, reg_max: int = 16):
-        """Initialize the BboxLoss module with regularization maximum and DFL settings."""
+    def __init__(
+        self,
+        reg_max: int = 16,
+        iou_loss: str = "ciou",
+        inner_ratio: float = 1.2,
+        shape_scale: float = 0.0,
+    ):
+        """Initialize the bounding-box and distribution focal losses."""
         super().__init__()
+
+        if iou_loss not in {"ciou", "wiou3", "inner_shape"}:
+            raise ValueError(f"Unsupported iou_loss={iou_loss!r}. Use 'ciou', 'wiou3', or 'inner_shape'.")
+        if not 0.5 <= inner_ratio <= 1.5:
+            raise ValueError(f"inner_ratio must be between 0.5 and 1.5, but got {inner_ratio}.")
+
+        self.iou_loss = iou_loss
+        self.inner_ratio = inner_ratio
+        self.shape_scale = shape_scale
         self.dfl_loss = DFLoss(reg_max) if reg_max > 1 else None
+
+        # WIoU-v3 state and constants
+        self.register_buffer("iou_mean", torch.tensor(1.0))
+        self.wiou_momentum = 0.01
+        self.wiou_alpha = 1.9
+        self.wiou_delta = 3.0
+
+    def _wiou3(self, pred: torch.Tensor, target: torch.Tensor, eps: float = 1e-7) -> torch.Tensor:
+        """Calculate Wise-IoU v3 loss for boxes in xyxy format."""
+        p_x1, p_y1, p_x2, p_y2 = pred.chunk(4, -1)
+        t_x1, t_y1, t_x2, t_y2 = target.chunk(4, -1)
+
+        p_w = (p_x2 - p_x1).clamp_min(eps)
+        p_h = (p_y2 - p_y1).clamp_min(eps)
+        t_w = (t_x2 - t_x1).clamp_min(eps)
+        t_h = (t_y2 - t_y1).clamp_min(eps)
+
+        inter = (p_x2.minimum(t_x2) - p_x1.maximum(t_x1)).clamp_min(0) * (
+            p_y2.minimum(t_y2) - p_y1.maximum(t_y1)
+        ).clamp_min(0)
+        union = p_w * p_h + t_w * t_h - inter + eps
+        iou_loss = 1.0 - inter / union
+
+        p_cx, p_cy = (p_x1 + p_x2) / 2, (p_y1 + p_y2) / 2
+        t_cx, t_cy = (t_x1 + t_x2) / 2, (t_y1 + t_y2) / 2
+        center_distance = (p_cx - t_cx).pow(2) + (p_cy - t_cy).pow(2)
+
+        enclosing_w = p_x2.maximum(t_x2) - p_x1.minimum(t_x1)
+        enclosing_h = p_y2.maximum(t_y2) - p_y1.minimum(t_y1)
+        enclosing_diagonal = enclosing_w.pow(2) + enclosing_h.pow(2) + eps
+
+        # WIoU v1 distance-attention term
+        distance_gain = torch.exp(center_distance / enclosing_diagonal.detach())
+        wiou_v1 = distance_gain * iou_loss
+
+        # Dynamic non-monotonic focusing for WIoU v3
+        if self.training:
+            with torch.no_grad():
+                self.iou_mean.lerp_(iou_loss.detach().mean(), self.wiou_momentum)
+
+        beta = iou_loss.detach() / self.iou_mean.clamp_min(eps)
+        focus = beta / (self.wiou_delta * self.wiou_alpha ** (beta - self.wiou_delta))
+        return focus * wiou_v1
+
+
+    def _inner_shape_iou(
+        self,
+        pred: torch.Tensor,
+        target: torch.Tensor,
+        eps: float = 1e-7,
+    ) -> torch.Tensor:
+        """Calculate Inner-Shape IoU loss for boxes in xyxy format."""
+        p_x1, p_y1, p_x2, p_y2 = pred.chunk(4, -1)
+        t_x1, t_y1, t_x2, t_y2 = target.chunk(4, -1)
+
+        p_w = (p_x2 - p_x1).clamp_min(eps)
+        p_h = (p_y2 - p_y1).clamp_min(eps)
+        t_w = (t_x2 - t_x1).clamp_min(eps)
+        t_h = (t_y2 - t_y1).clamp_min(eps)
+
+        p_cx, p_cy = (p_x1 + p_x2) / 2, (p_y1 + p_y2) / 2
+        t_cx, t_cy = (t_x1 + t_x2) / 2, (t_y1 + t_y2) / 2
+
+        # Inner-IoU auxiliary boxes
+        ratio = self.inner_ratio
+        p_half_w, p_half_h = p_w * ratio / 2, p_h * ratio / 2
+        t_half_w, t_half_h = t_w * ratio / 2, t_h * ratio / 2
+
+        inner_inter = (
+            (p_cx + p_half_w).minimum(t_cx + t_half_w)
+            - (p_cx - p_half_w).maximum(t_cx - t_half_w)
+        ).clamp_min(0) * (
+            (p_cy + p_half_h).minimum(t_cy + t_half_h)
+            - (p_cy - p_half_h).maximum(t_cy - t_half_h)
+        ).clamp_min(0)
+
+        inner_union = (p_w * p_h + t_w * t_h) * ratio**2 - inner_inter + eps
+        inner_iou = inner_inter / inner_union
+
+        # Shape-IoU directional weights
+        t_w_scaled = t_w.pow(self.shape_scale)
+        t_h_scaled = t_h.pow(self.shape_scale)
+        scale_sum = t_w_scaled + t_h_scaled + eps
+        ww = 2 * t_w_scaled / scale_sum
+        hh = 2 * t_h_scaled / scale_sum
+
+        enclosing_w = p_x2.maximum(t_x2) - p_x1.minimum(t_x1)
+        enclosing_h = p_y2.maximum(t_y2) - p_y1.minimum(t_y1)
+        enclosing_diagonal = enclosing_w.pow(2) + enclosing_h.pow(2) + eps
+
+        distance = (
+            hh * (p_cx - t_cx).pow(2) + ww * (p_cy - t_cy).pow(2)
+        ) / enclosing_diagonal
+
+        omega_w = hh * (p_w - t_w).abs() / p_w.maximum(t_w).clamp_min(eps)
+        omega_h = ww * (p_h - t_h).abs() / p_h.maximum(t_h).clamp_min(eps)
+        shape_cost = (1 - torch.exp(-omega_w)).pow(4) + (1 - torch.exp(-omega_h)).pow(4)
+
+        return 1.0 - inner_iou + distance + 0.5 * shape_cost
+
 
     def forward(
         self,
@@ -130,8 +245,17 @@ class BboxLoss(nn.Module):
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """Compute IoU and DFL losses for bounding boxes."""
         weight = target_scores[fg_mask].sum(-1, keepdim=True)
-        iou = bbox_iou(pred_bboxes[fg_mask], target_bboxes[fg_mask], xywh=False, CIoU=True)
-        loss_iou = ((1.0 - iou) * weight).sum() / target_scores_sum
+        pred = pred_bboxes[fg_mask]
+        target = target_bboxes[fg_mask]
+
+        if self.iou_loss == "ciou":
+            box_loss = 1.0 - bbox_iou(pred, target, xywh=False, CIoU=True)
+        elif self.iou_loss == "wiou3":
+            box_loss = self._wiou3(pred, target)
+        else:
+            box_loss = self._inner_shape_iou(pred, target)
+
+        loss_iou = (box_loss * weight).sum() / target_scores_sum
 
         # DFL loss
         if self.dfl_loss:
@@ -369,7 +493,12 @@ class v8DetectionLoss:
             stride=self.stride.tolist(),
             topk2=tal_topk2,
         )
-        self.bbox_loss = BboxLoss(m.reg_max).to(device)
+        self.bbox_loss = BboxLoss(
+            m.reg_max,
+            iou_loss=h.iou_loss,
+            inner_ratio=h.inner_ratio,
+            shape_scale=h.shape_scale,
+        ).to(device)
         self.proj = torch.arange(m.reg_max, dtype=torch.float, device=device)
 
     def preprocess(self, targets: torch.Tensor, batch_size: int, scale_tensor: torch.Tensor) -> torch.Tensor:

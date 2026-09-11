@@ -4,7 +4,7 @@ import torch.nn.functional as F
 
 from ultralytics.nn.modules.conv import autopad, Conv, GhostConv
 from ultralytics.nn.modules.head import Detect
-from ultralytics.nn.modules.block import C3
+from ultralytics.nn.modules.block import C3, C2f
 
 import copy
 
@@ -16,12 +16,13 @@ __all__ = (
     "LEAF",
     "LEAFT",
     "ELAN",
-    "GhostPConv",
     "CoordBlock",
     "MGC",
-    "PLEAFT",
-    "PELAN",
-    "GPDetect",
+    "NeXt",
+    "NeXtC2f",
+    "DySample",
+    "CARAFE",
+    "CoordAtt",
 )
 
 
@@ -54,12 +55,18 @@ class PConv(nn.Module):
 class SPDConv(nn.Module):
     """Downsample by space-to-depth followed by a non-strided convolution."""
 
-    def __init__(self, c1, c2, k=3, scale=2):
+    def __init__(self, c1, c2, k=3, scale=2, ds=False):
         super().__init__()
         self.scale = scale
 
         c_ = c1 * scale**2
-        self.conv = Conv(c_, c2, k)
+        if ds:
+            self.conv = nn.Sequential(
+                Conv(c_, c2, 1),
+                Conv(c2, c2, k, g=c2),
+            )
+        else:
+            self.conv = Conv(c_, c2, k)
 
     def forward(self, x):
         s = self.scale
@@ -207,20 +214,6 @@ class ELAN(C3):
         self.m = nn.Sequential(*(Conv(c_, c_, 3) for _ in range(n)))
 
 
-class GhostPConv(nn.Module):
-    """GhostConv using PConv."""
-
-    def __init__(self, c1, c2, k=3, s=1, n_div=4):
-        super().__init__()
-        c_ = c2 // 2
-        self.cv1 = Conv(c1, c_, k, s)
-        self.cv2 = PConv(c_, k, n_div)
-
-    def forward(self, x):
-        y = self.cv1(x)
-        return torch.cat((y, self.cv2(y)), 1)
-
-
 class AddCoords(nn.Module):
     def __init__(self, with_r=False):
         super().__init__()
@@ -336,71 +329,199 @@ class MGC(nn.Module):
         return torch.cat((y1, y2), dim=1)
 
 
-class PLEAFT(nn.Module):
-    """LEAF-T using PConv."""
-
-    def __init__(
-        self,
-        c1: int,
-        c2: int,
-        n: int = 1,
-        shortcut: bool = True,
-        g: int = 1,
-        e: float = 0.5,
-        n_div: int = 4,
-    ):
+class NeXt(nn.Module):
+    """Inspired by ConvNeXt and FastViT"""
+    def __init__(self, c1: int, c2: int):
         super().__init__()
-
-        c_ = int(c2 * e)
-        self.cv1 = Conv(c1, c_, 1, 1)
-        self.cv2 = Conv(c1, c_, 1, 1)
-        self.pconvs = nn.ModuleList(PConv(c_, 3, n_div) for _ in range(2))
-        self.csp = CSPRes2B(
-            4 * c_,
-            c2,
-            n=n,
-            shortcut=shortcut,
-            g=g,
-            e=e,
-        )
+        self.dwconv = nn.Conv2d(c1, c1, kernel_size=7, padding=3, groups=c1)
+        self.norm = nn.BatchNorm2d(c1)
+        self.pwconv1 = nn.Conv2d(c1, 2 * c2, kernel_size=1)
+        self.act = nn.SiLU(inplace=True)
+        self.pwconv2 = nn.Conv2d(2 * c2, c2, kernel_size=1)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        first = self.cv1(x)
-        second = self.cv2(x)
-
-        states = [second]
-        for pconv in self.pconvs:
-            states.append(pconv(states[-1]))
-
-        return self.csp(torch.cat((first, *states), dim=1))
+        return x + self.pwconv2(self.act(self.pwconv1(self.norm(self.dwconv(x)))))
 
 
-class PELAN(C3):
-    """ELAN using PConv."""
-
-    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5, n_div=4):
+class NeXtC2f(C2f):
+    """C2f using NeXt."""
+    def __init__(self, c1: int, c2: int, n: int = 1, shortcut: bool = True, g: int = 1, e: float = 0.5):
         super().__init__(c1, c2, n, shortcut, g, e)
         c_ = int(c2 * e)
-        self.m = nn.Sequential(*(PConv(c_, 3, n_div) for _ in range(n)))
+        self.m = nn.Sequential(*(NeXt(c_, c_) for _ in range(n)))
 
 
-class GPDetect(Detect):
-    def __init__(self, nc=80, reg_max=16, end2end=False, ch=()):
-        super().__init__(nc, reg_max, end2end, ch)
+class DySample(nn.Module):
+    """Dynamic upsampling by learned point sampling."""
 
-        c2 = max((16, ch[0] // 4, self.reg_max * 4))
-        c3 = max(ch[0], min(self.nc, 100))
+    def __init__(self, c1, scale=2, style="lp", groups=4, dyscope=False):
+        """Initialize DySample.
 
-        self.cv2 = nn.ModuleList(
-            nn.Sequential(GhostPConv(x, c2, 3), GhostPConv(c2, c2, 3), nn.Conv2d(c2, 4 * self.reg_max, 1))
-            for x in ch
+        Args:
+            c1 (int): Number of input and output channels.
+            scale (int): Upsampling scale factor.
+            style (str): Sampling style, either "lp" or "pl".
+            groups (int): Number of channel groups.
+            dyscope (bool): Whether to learn a dynamic offset scope.
+        """
+        super().__init__()
+        if style not in {"lp", "pl"}:
+            raise ValueError(f"DySample style must be 'lp' or 'pl', not {style!r}.")
+        if c1 % groups:
+            raise ValueError(f"Input channels {c1} must be divisible by groups {groups}.")
+        if style == "pl" and c1 % scale**2:
+            raise ValueError(f"Input channels {c1} must be divisible by scale² ({scale**2}) for style='pl'.")
+
+        self.scale = scale
+        self.style = style
+        self.groups = groups
+
+        offset_channels = c1 // scale**2 if style == "pl" else c1
+        output_channels = 2 * groups if style == "pl" else 2 * groups * scale**2
+
+        self.offset = nn.Conv2d(offset_channels, output_channels, 1)
+        nn.init.normal_(self.offset.weight, std=0.001)
+        nn.init.constant_(self.offset.bias, 0)
+
+        if dyscope:
+            self.scope = nn.Conv2d(offset_channels, output_channels, 1, bias=False)
+            nn.init.constant_(self.scope.weight, 0)
+
+        self.register_buffer("init_pos", self._init_pos())
+
+    def _init_pos(self):
+        """Create the initial regular sampling positions."""
+        coordinate = torch.arange(
+            (-self.scale + 1) / 2,
+            (self.scale - 1) / 2 + 1,
+        ) / self.scale
+
+        position = torch.stack(
+            (
+                coordinate.repeat(self.scale, 1),
+                coordinate.view(-1, 1).repeat(1, self.scale),
+            )
+        )
+        return position.repeat(1, self.groups, 1).reshape(1, -1, 1, 1)
+
+    def _sample(self, x, offset):
+        """Sample input features using learned offsets."""
+        batch, _, height, width = offset.shape
+        offset = offset.view(batch, 2, -1, height, width)
+
+        coordinates_w = torch.arange(width, dtype=x.dtype, device=x.device) + 0.5
+        coordinates_h = torch.arange(height, dtype=x.dtype, device=x.device) + 0.5
+        coordinates = torch.stack(
+            (
+                coordinates_w.view(1, width).expand(height, width),
+                coordinates_h.view(height, 1).expand(height, width),
+            )
+        )
+        coordinates = coordinates.unsqueeze(0).unsqueeze(2)
+        normalizer = x.new_tensor((width, height)).view(1, 2, 1, 1, 1)
+        coordinates = 2 * (coordinates + offset) / normalizer - 1
+
+        coordinates = F.pixel_shuffle(
+            coordinates.view(batch, -1, height, width),
+            self.scale,
+        )
+        coordinates = (
+            coordinates.view(
+                batch,
+                2,
+                -1,
+                height * self.scale,
+                width * self.scale,
+            )
+            .permute(0, 2, 3, 4, 1)
+            .contiguous()
+            .flatten(0, 1)
         )
 
-        self.cv3 = nn.ModuleList(
-            nn.Sequential(GhostPConv(x, c3, 3), GhostPConv(c3, c3, 3), nn.Conv2d(c3, self.nc, 1))
-            for x in ch
+        return F.grid_sample(
+            x.reshape(batch * self.groups, -1, height, width),
+            coordinates,
+            mode="bilinear",
+            padding_mode="border",
+            align_corners=False,
+        ).view(batch, -1, height * self.scale, width * self.scale)
+
+    def forward(self, x):
+        """Upsample the input feature map."""
+        if self.style == "pl":
+            shuffled = F.pixel_shuffle(x, self.scale)
+            offset = self.offset(shuffled)
+
+            if hasattr(self, "scope"):
+                offset = offset * self.scope(shuffled).sigmoid() * 0.5
+            else:
+                offset = offset * 0.25
+
+            offset = F.pixel_unshuffle(offset, self.scale) + self.init_pos
+        else:
+            offset = self.offset(x)
+
+            if hasattr(self, "scope"):
+                offset = offset * self.scope(x).sigmoid() * 0.5
+            else:
+                offset = offset * 0.25
+
+            offset = offset + self.init_pos
+
+        return self._sample(x, offset)
+
+
+class CARAFE(nn.Module):
+    """Content-aware reassembly of features upsampler."""
+
+    def __init__(self, c1, c_mid=64, scale=2, k_up=5, k_enc=3):
+        """Initialize CARAFE.
+
+        Args:
+            c1 (int): Number of input and output channels.
+            c_mid (int): Number of compressed channels.
+            scale (int): Upsampling scale factor.
+            k_up (int): Reassembly kernel size.
+            k_enc (int): Content encoder kernel size.
+        """
+        super().__init__()
+        if k_up % 2 == 0 or k_enc % 2 == 0:
+            raise ValueError("CARAFE kernel sizes must be odd.")
+
+        self.scale = scale
+        self.k_up = k_up
+
+        self.compressor = Conv(c1, c_mid, 1, act=nn.ReLU(inplace=True))
+        self.encoder = Conv(
+            c_mid,
+            scale**2 * k_up**2,
+            k_enc,
+            act=False,
+        )
+        self.unfold = nn.Unfold(
+            kernel_size=k_up,
+            dilation=scale,
+            padding=k_up // 2 * scale,
         )
 
-        if end2end:
-            self.one2one_cv2 = copy.deepcopy(self.cv2)
-            self.one2one_cv3 = copy.deepcopy(self.cv3)
+    def forward(self, x):
+        """Upsample the input feature map."""
+        batch, channels, height, width = x.shape
+        output_height = height * self.scale
+        output_width = width * self.scale
+
+        weights = self.encoder(self.compressor(x))
+        weights = F.pixel_shuffle(weights, self.scale)
+        weights = weights.softmax(dim=1)
+
+        features = F.interpolate(x, scale_factor=self.scale, mode="nearest")
+        features = self.unfold(features)
+        features = features.view(
+            batch,
+            channels,
+            self.k_up**2,
+            output_height,
+            output_width,
+        )
+
+        return (features * weights.unsqueeze(1)).sum(dim=2)

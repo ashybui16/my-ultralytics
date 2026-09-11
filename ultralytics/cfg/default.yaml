@@ -138,3 +138,7 @@ cfg: # (str, optional) path to a config.yaml that overrides defaults
 
 # Tracker settings ------------------------------------------------------------------------------------------------------
 tracker: tracktrack.yaml # (str) tracker config: botsort.yaml, bytetrack.yaml, ocsort.yaml, deepocsort.yaml, fasttrack.yaml, tracktrack.yaml
+
+iou_loss: ciou # (str) bounding-box IoU loss: ciou, wiou3, or inner_shape
+inner_ratio: 1.2 # (float) auxiliary-box scale for Inner-Shape IoU
+shape_scale: 0.0 # (float) Shape-IoU aspect weighting exponent
