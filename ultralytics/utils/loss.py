@@ -115,7 +115,7 @@ class BboxLoss(nn.Module):
         self,
         reg_max: int = 16,
         iou_loss: str = "ciou",
-        inner_ratio: float = 1.2,
+        inner_ratio: float = 1.15,
         shape_scale: float = 0.0,
     ):
         """Initialize the bounding-box and distribution focal losses."""
@@ -174,7 +174,6 @@ class BboxLoss(nn.Module):
         focus = beta / (self.wiou_delta * self.wiou_alpha ** (beta - self.wiou_delta))
         return focus * wiou_v1
 
-
     def _inner_shape_iou(
         self,
         pred: torch.Tensor,
@@ -199,11 +198,9 @@ class BboxLoss(nn.Module):
         t_half_w, t_half_h = t_w * ratio / 2, t_h * ratio / 2
 
         inner_inter = (
-            (p_cx + p_half_w).minimum(t_cx + t_half_w)
-            - (p_cx - p_half_w).maximum(t_cx - t_half_w)
+            (p_cx + p_half_w).minimum(t_cx + t_half_w) - (p_cx - p_half_w).maximum(t_cx - t_half_w)
         ).clamp_min(0) * (
-            (p_cy + p_half_h).minimum(t_cy + t_half_h)
-            - (p_cy - p_half_h).maximum(t_cy - t_half_h)
+            (p_cy + p_half_h).minimum(t_cy + t_half_h) - (p_cy - p_half_h).maximum(t_cy - t_half_h)
         ).clamp_min(0)
 
         inner_union = (p_w * p_h + t_w * t_h) * ratio**2 - inner_inter + eps
@@ -220,16 +217,13 @@ class BboxLoss(nn.Module):
         enclosing_h = p_y2.maximum(t_y2) - p_y1.minimum(t_y1)
         enclosing_diagonal = enclosing_w.pow(2) + enclosing_h.pow(2) + eps
 
-        distance = (
-            hh * (p_cx - t_cx).pow(2) + ww * (p_cy - t_cy).pow(2)
-        ) / enclosing_diagonal
+        distance = (hh * (p_cx - t_cx).pow(2) + ww * (p_cy - t_cy).pow(2)) / enclosing_diagonal
 
         omega_w = hh * (p_w - t_w).abs() / p_w.maximum(t_w).clamp_min(eps)
         omega_h = ww * (p_h - t_h).abs() / p_h.maximum(t_h).clamp_min(eps)
         shape_cost = (1 - torch.exp(-omega_w)).pow(4) + (1 - torch.exp(-omega_h)).pow(4)
 
         return 1.0 - inner_iou + distance + 0.5 * shape_cost
-
 
     def forward(
         self,

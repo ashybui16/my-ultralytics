@@ -1,28 +1,26 @@
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
+from torch import nn
 
-from ultralytics.nn.modules.conv import autopad, Conv, GhostConv
-from ultralytics.nn.modules.head import Detect
 from ultralytics.nn.modules.block import C3, C2f
-
-import copy
+from ultralytics.nn.modules.conv import Conv, GhostConv, autopad
 
 __all__ = (
-    "PConv",
-    "SPDConv",
-    "Res2Block",
-    "CSPRes2B",
+    "CARAFE",
+    "ELAN",
     "LEAF",
     "LEAFT",
-    "ELAN",
-    "CoordBlock",
     "MGC",
+    "SPPRFEM",
+    "CSPRes2B",
+    "CoordAtt",
+    "CoordBlock",
+    "DySample",
     "NeXt",
     "NeXtC2f",
-    "DySample",
-    "CARAFE",
-    "CoordAtt",
+    "PConv",
+    "Res2Block",
+    "SPDConv",
 )
 
 
@@ -38,18 +36,8 @@ class PConv(nn.Module):
         self.channel_mixer = Conv(c1, c1, 1)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        if self.training:
-            return self.forward_split_cat(x)
-        return self.forward_slicing(x)
-
-    def forward_split_cat(self, x: torch.Tensor) -> torch.Tensor:
         x1, x2 = torch.split(x, (self.c_partial, self.c_untouched), dim=1)
         return self.channel_mixer(torch.cat((self.partial_conv(x1), x2), dim=1))
-
-    def forward_slicing(self, x: torch.Tensor) -> torch.Tensor:
-        y = x.clone()
-        y[:, : self.c_partial] = self.partial_conv(x[:, : self.c_partial])
-        return self.channel_mixer(y)
 
 
 class SPDConv(nn.Module):
@@ -78,46 +66,38 @@ class SPDConv(nn.Module):
 
 
 class Res2Block(nn.Module):
-    """Res2Block from LEAF-YOLO."""
+    """Res2Net bottleneck from LEAF-YOLO."""
 
     def __init__(
         self,
         c1: int,
         c2: int,
         shortcut: bool = True,
+        base_width: int = 8,
+        scale: int = 5,
     ):
         super().__init__()
         self.add = shortcut and c1 == c2
 
-        self.conv1 = Conv(c1, c2, 1)
-
-        self.c_ =  c2 // 4
-        self.convs = nn.ModuleList(Conv(self.c_, self.c_, 3) for _ in range(3))
-        
-        self.conv2 = Conv(c2, c2, 1, act=False)
+        self.c_ = c2 * base_width // 64
+        self.conv1 = Conv(c1, self.c_ * scale, 1)
+        self.convs = nn.ModuleList(Conv(self.c_, self.c_, 3) for _ in range(scale - 1))
+        self.conv2 = Conv(self.c_ * scale, c2, 1, act=False)
         self.act = nn.SiLU(inplace=True)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        residual = x if self.add else None
+        splits = torch.split(self.conv1(x), self.c_, dim=1)
 
-        x = self.conv1(x)
-
-        splits = torch.split(x, self.c_, dim=1)
         out = None
         branch = None
-        for i in range(3):
+        for i, conv in enumerate(self.convs):
             branch = splits[i] if i == 0 else branch + splits[i]
-            branch = self.convs[i](branch)
+            branch = conv(branch)
             out = branch if i == 0 else torch.cat((out, branch), dim=1)
 
-        out = torch.cat((out, splits[3]), dim=1)
+        out = self.conv2(torch.cat((out, splits[-1]), dim=1))
 
-        out = self.conv2(out)
-
-        if residual is not None:
-            out = out + residual
-
-        return self.act(out)
+        return self.act(out + x if self.add else out)
 
 
 class CSPRes2B(C3):
@@ -164,12 +144,21 @@ class LEAF(nn.Module):
         states = [second]
         for pconv in self.pconvs:
             states.append(pconv(states[-1]))
-        
+
         return self.csp(torch.cat((first, states[0], states[2], states[4]), dim=1))
 
 
-class LEAFT(nn.Module):
-    """LEAF-T from LEAF-YOLO."""
+class ELAN(nn.Module):
+    """ELAN from LEAF-YOLO.
+
+    Args:
+        c1 (int): Number of input channels.
+        c2 (int): Number of output channels.
+        n (int): Unused here; it is the CSP repeat count for the LEAFT subclass.
+        shortcut (bool): Unused here; forwarded to CSPRes2B by the LEAFT subclass.
+        g (int): Unused here; forwarded to CSPRes2B by the LEAFT subclass.
+        e (float): Hidden channel expansion.
+    """
 
     def __init__(
         self,
@@ -186,32 +175,78 @@ class LEAFT(nn.Module):
         self.cv1 = Conv(c1, c_, 1, 1)
         self.cv2 = Conv(c1, c_, 1, 1)
         self.convs = nn.ModuleList(Conv(c_, c_, 3) for _ in range(2))
-        self.csp = CSPRes2B(
-            4 * c_,
-            c2,
-            n=n,
-            shortcut=shortcut,
-            g=g,
-            e=e,
-        )
+        self.transition = Conv(4 * c_, c2, 1)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        first = self.cv1(x)
-        second = self.cv2(x)
-
-        states = [second]
+        states = [self.cv1(x), self.cv2(x)]
         for conv in self.convs:
             states.append(conv(states[-1]))
 
-        return self.csp(torch.cat((first, *states), dim=1))
+        return self.transition(torch.cat(states, dim=1))
 
-class ELAN(C3):
-    """ELAN from LEAF-YOLO."""
 
-    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):
+class LEAFT(ELAN):
+    """LEAF-T from LEAF-YOLO: ELAN with a CSPRes2B transition."""
+
+    def __init__(
+        self,
+        c1: int,
+        c2: int,
+        n: int = 1,
+        shortcut: bool = True,
+        g: int = 1,
+        e: float = 0.5,
+    ):
         super().__init__(c1, c2, n, shortcut, g, e)
-        c_ = int(c2 * e)
-        self.m = nn.Sequential(*(Conv(c_, c_, 3) for _ in range(n)))
+        self.transition = CSPRes2B(4 * int(c2 * e), c2, n, shortcut, g, e)
+
+
+class RFEM(nn.Module):
+    """Receptive field enhancement with weight-shared dilated convolutions, from LEAF-YOLO."""
+
+    def __init__(self, c1: int, e: float = 0.5, dilations: tuple = (1, 2, 3)):
+        super().__init__()
+
+        c_ = int(c1 * e)
+        self.dilations = dilations
+        self.weight1 = nn.Parameter(torch.empty(c_, c1, 1, 1))
+        self.weight2 = nn.Parameter(torch.empty(c1, c_, 3, 3))
+        nn.init.kaiming_uniform_(self.weight1, nonlinearity="relu")
+        nn.init.kaiming_uniform_(self.weight2, nonlinearity="relu")
+
+        self.bn1 = nn.BatchNorm2d(c_)
+        self.bn2 = nn.BatchNorm2d(c1)
+        self.bn3 = nn.BatchNorm2d(c1)
+        self.act = nn.SiLU()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        y = self.act(self.bn1(F.conv2d(x, self.weight1)))
+
+        out = x
+        for d in self.dilations:
+            out = out + self.act(self.bn2(F.conv2d(y, self.weight2, padding=d, dilation=d)) + x)
+
+        return self.act(self.bn3(out))
+
+
+class SPPRFEM(nn.Module):
+    """SPPF with an added receptive field enhancement branch, from LEAF-YOLO."""
+
+    def __init__(self, c1: int, c2: int, k: int = 5):
+        super().__init__()
+
+        c_ = c1 // 2
+        self.cv1 = Conv(c1, c_, 1, 1, None, 2)
+        self.cv2 = Conv(c_ * 5, c2, 1, 1, None, 2)
+        self.m = nn.MaxPool2d(k, 1, k // 2)
+        self.rfe = RFEM(c_)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.cv1(x)
+        y = [x]
+        y.extend(self.m(y[-1]) for _ in range(3))
+        y.append(self.rfe(x))
+        return self.cv2(torch.cat(y, dim=1))
 
 
 class AddCoords(nn.Module):
@@ -227,7 +262,7 @@ class AddCoords(nn.Module):
         y_coord = torch.linspace(-1, 1, dim_y, device=device, dtype=dtype)
         x_coord = torch.linspace(-1, 1, dim_x, device=device, dtype=dtype)
 
-        y_grid, x_grid = torch.meshgrid(y_coord, x_coord, indexing='ij')
+        y_grid, x_grid = torch.meshgrid(y_coord, x_coord, indexing="ij")
 
         y_grid = y_grid.unsqueeze(0).unsqueeze(0).expand(batch_size, -1, -1, -1)
         x_grid = x_grid.unsqueeze(0).unsqueeze(0).expand(batch_size, -1, -1, -1)
@@ -243,13 +278,14 @@ class AddCoords(nn.Module):
 
 class CoordConv(nn.Module):
     """Coordinate Convolution."""
+
     def __init__(self, c1, c2, k=1, s=1, with_r=False):
         super().__init__()
         self.addcoords = AddCoords(with_r=with_r)
         c1 += 2
         if with_r:
             c1 += 1
-        
+
         self.conv = Conv(c1, c2, k, s)
 
     def forward(self, x):
@@ -260,6 +296,7 @@ class CoordConv(nn.Module):
 
 class CoordAtt(nn.Module):
     """Coordinate Attention."""
+
     def __init__(self, c1, r=32):
         super().__init__()
         self.pool_h = nn.AdaptiveAvgPool2d((None, 1))
@@ -299,16 +336,19 @@ class CoordAtt(nn.Module):
 
 class CoordBlock(nn.Module):
     """CoordBlock from LEAF-YOLO."""
+
     def __init__(self, c1, c2, k=1, s=1, with_r=False):
         super().__init__()
         self.coordconv = CoordConv(c1, c2, k, s, with_r)
         self.coordatt = CoordAtt(c2)
+
     def forward(self, x):
         return self.coordatt(self.coordconv(x))
 
 
 class MGC(nn.Module):
     """MGC from LEAF-YOLO."""
+
     def __init__(self, c1, c2):
         super().__init__()
         self.c_ = c2 // 2
@@ -331,6 +371,7 @@ class MGC(nn.Module):
 
 class NeXt(nn.Module):
     """Inspired by ConvNeXt and FastViT"""
+
     def __init__(self, c1: int, c2: int):
         super().__init__()
         self.dwconv = nn.Conv2d(c1, c1, kernel_size=7, padding=3, groups=c1)
@@ -345,6 +386,7 @@ class NeXt(nn.Module):
 
 class NeXtC2f(C2f):
     """C2f using NeXt."""
+
     def __init__(self, c1: int, c2: int, n: int = 1, shortcut: bool = True, g: int = 1, e: float = 0.5):
         super().__init__(c1, c2, n, shortcut, g, e)
         c_ = int(c2 * e)
@@ -391,10 +433,13 @@ class DySample(nn.Module):
 
     def _init_pos(self):
         """Create the initial regular sampling positions."""
-        coordinate = torch.arange(
-            (-self.scale + 1) / 2,
-            (self.scale - 1) / 2 + 1,
-        ) / self.scale
+        coordinate = (
+            torch.arange(
+                (-self.scale + 1) / 2,
+                (self.scale - 1) / 2 + 1,
+            )
+            / self.scale
+        )
 
         position = torch.stack(
             (

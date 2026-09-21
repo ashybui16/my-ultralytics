@@ -1,63 +1,62 @@
+# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
+
+# LEAF-YOLO backbone and neck with the YOLO26 end-to-end detection head, P2/4 - P5/32 outputs
+# Reference: LEAF-YOLO, Intelligent Systems with Applications 25 (2025) 200484
+
 # Parameters
 nc: 80 # number of classes
 end2end: True # whether to use end-to-end mode
 reg_max: 1 # DFL bins
+scales: # model compound scaling constants, i.e. 'model=yolo26n-leaf.yaml' will call yolo26-leaf.yaml with scale 'n'
+  # [depth, width, max_channels]
+  n: [1.00, 0.50, 1024] # LEAF-YOLO-N reference: 1.2M parameters, 5.6 GFLOPs
+  s: [1.00, 1.00, 1024] # LEAF-YOLO reference: 4.28M parameters, 20.9 GFLOPs
 
-# backbone
+# LEAF-YOLO backbone
 backbone:
   # [from, repeats, module, args]
   - [-1, 1, Conv, [32, 3, 2]] # 0-P1/2
-
-  - [-1, 1, Conv, [64, 3, 2]] 
+  - [-1, 1, Conv, [64, 3, 2]] # 1-P2/4
   - [-1, 1, GhostConv, [64, 3, 1]]
   - [-1, 1, LEAF, [64]] # 3-P2/4
-
-  - [-1, 1, MGC, [128]] 
+  - [-1, 1, MGC, [128]]
   - [-1, 1, LEAF, [128]] # 5-P3/8
-
   - [-1, 1, MGC, [256]]
   - [-1, 1, LEAF, [256]] # 7-P4/16
-
   - [-1, 1, MGC, [512]]
-  - [-1, 1, LEAF, [256]]
-  - [-1, 1, SPPF, [256, 5, 3, True]]
-  - [-1, 1, C2PSA, [256]] # 11-P5/32
+  - [-1, 1, LEAF, [256, True, 1, 1.0]] # e=1.0, matching LEAF-YOLO layers 42-49
+  - [-1, 1, SPPRFEM, [256, 5]] # 10-P5/32
 
-# head
+# LEAF-YOLO neck with the YOLO26 head
 head:
   - [-1, 1, CoordBlock, [128, 1, 1]]
   - [-1, 1, nn.Upsample, [None, 2, "nearest"]]
-  - [7, 1, Conv, [128, 1, 1]]
-  - [[-1, -2], 1, Concat, [1]] 
-  - [-1, 1, LEAFT, [128]] # 16-P4/16
+  - [7, 1, Conv, [128, 1, 1]] # route backbone P4
+  - [[-1, -2], 1, Concat, [1]]
+  - [-1, 1, LEAFT, [128]] # 15-P4/16
 
-  - [-1, 1, CoordBlock, [64]]
+  - [-1, 1, CoordBlock, [64, 1, 1]]
   - [-1, 1, nn.Upsample, [None, 2, "nearest"]]
-  - [5, 1, Conv, [64, 1, 1]]
-  - [[-1, -2], 1, Concat, [1]] 
-  - [-1, 1, LEAFT, [64]] # 21-P3/8
+  - [5, 1, Conv, [64, 1, 1]] # route backbone P3
+  - [[-1, -2], 1, Concat, [1]]
+  - [-1, 1, LEAFT, [64]] # 20-P3/8
 
-  - [-1, 1, CoordBlock, [64]]
+  - [-1, 1, CoordBlock, [64, 1, 1]]
   - [-1, 1, nn.Upsample, [None, 2, "nearest"]]
-  - [3, 1, Conv, [32, 1, 1]]
+  - [3, 1, Conv, [32, 1, 1]] # route backbone P2
   - [[-1, -2], 1, Concat, [1]]
   - [-1, 1, LEAFT, [64]]
-  - [-1, 2, ELAN, [64]] # 27-P2/4
+  - [-1, 1, ELAN, [64]] # 26 (P2/4-xsmall)
 
   - [-1, 1, GhostConv, [128, 3, 2]]
-  - [[-1, 21], 1, Concat, [1]] 
-  - [-1, 2, ELAN, [128]] # 30-P3/8
+  - [[-1, 20], 1, Concat, [1]] # cat head P3
+  - [-1, 1, ELAN, [128]] # 29 (P3/8-small)
 
   - [-1, 1, GhostConv, [256, 3, 2]]
-  - [[-1, 16], 1, Concat, [1]]
-  - [-1, 2, ELAN, [256]] # 33-P4/16
+  - [[-1, 15], 1, Concat, [1]] # cat head P4
+  - [-1, 1, ELAN, [256]] # 32 (P4/16-medium)
 
   - [-1, 1, GhostConv, [128, 3, 2]]
-  - [[-1, 11], 1, Concat, [1]] # 35-P5/32
+  - [[-1, 10], 1, Concat, [1]] # 34 (P5/32-large), cat backbone SPPRFEM
 
-  - [27, 1, PConv, [3]] # 36-P2/4
-  - [30, 1, PConv, [3]] # 37-P3/8
-  - [33, 1, PConv, [3]] # 38-P4/16
-  - [35, 1, PConv, [3]] # 39-P5/32
-
-  - [[36, 37, 38, 39], 1, Detect, [nc]] # Detect(P2, P3, P4, P5)
+  - [[26, 29, 32, 34], 1, Detect, [nc]] # Detect(P2, P3, P4, P5)
