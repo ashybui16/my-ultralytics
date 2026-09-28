@@ -9,8 +9,8 @@ end2end: True # whether to use end-to-end mode
 reg_max: 1 # DFL bins
 scales: # model compound scaling constants, i.e. 'model=yolo26n-leaf1.yaml' will call yolo26-leaf1.yaml with scale 'n'
   # [depth, width, max_channels]
-  n: [1.00, 0.50, 1024] # summary: 485 layers, 1,691,352 parameters, 9.5 GFLOPs
-  s: [1.00, 1.00, 1024] # summary: 485 layers, 5,983,264 parameters, 27.6 GFLOPs
+  n: [1.00, 0.50, 1024] # summary: 487 layers, 2,133,116 parameters, 18.6 GFLOPs
+  s: [1.00, 1.00, 1024] # summary: 487 layers, 8,251,144 parameters, 69.6 GFLOPs
 
 # LEAF-YOLO backbone
 backbone:
