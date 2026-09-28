@@ -27,13 +27,13 @@ __all__ = (
 class PConv(nn.Module):
     """FasterNet partial convolution."""
 
-    def __init__(self, c1: int, k: int = 3, n_div: int = 4):
+    def __init__(self, c1: int, c2: int, k: int = 3, n_div: int = 4):
         super().__init__()
 
         self.c_partial = c1 // n_div
         self.c_untouched = c1 - self.c_partial
         self.partial_conv = nn.Conv2d(self.c_partial, self.c_partial, k, 1, autopad(k), bias=False)
-        self.channel_mixer = Conv(c1, c1, 1)
+        self.channel_mixer = Conv(c1, c2, 1)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x1, x2 = torch.split(x, (self.c_partial, self.c_untouched), dim=1)
@@ -127,7 +127,7 @@ class LEAF(nn.Module):
         c_ = int(c2 * e)
         self.cv1 = Conv(c1, c_, 1, 1)
         self.cv2 = Conv(c1, c_, 1, 1)
-        self.pconvs = nn.ModuleList(PConv(c_, k=3, n_div=n_div) for _ in range(4))
+        self.pconvs = nn.ModuleList(PConv(c_, c_, k=3, n_div=n_div) for _ in range(4))
         self.csp = CSPRes2B(
             4 * c_,
             c2,

@@ -1,0 +1,67 @@
+# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
+
+# LEAF-YOLO backbone and neck with the YOLO26 end-to-end detection head, P2/4 - P5/32 outputs
+# Reference: LEAF-YOLO, Intelligent Systems with Applications 25 (2025) 200484
+
+# Parameters
+nc: 80 # number of classes
+end2end: True # whether to use end-to-end mode
+reg_max: 1 # DFL bins
+scales: # model compound scaling constants, i.e. 'model=yolo26n-leaf2.yaml' will call yolo26-leaf2.yaml with scale 'n'
+  # [depth, width, max_channels]
+  n: [1.00, 0.50, 1024] # summary: 512 layers, 2,514,136 parameters, 19.7 GFLOPs
+  s: [1.00, 1.00, 1024] # summary: 512 layers, 9,760,800 parameters, 73.7 GFLOPs
+
+# LEAF-YOLO backbone
+backbone:
+  # [from, repeats, module, args]
+  - [-1, 1, Conv, [32, 3, 2]] # 0-P1/2
+  - [-1, 1, Conv, [64, 3, 2]] # 1-P2/4
+  - [-1, 1, LEAF, [64]] # 2-P2/4
+  - [-1, 1, MGC, [128]]
+  - [-1, 1, LEAF, [128]] # 4-P3/8
+  - [-1, 1, MGC, [256]]
+  - [-1, 1, LEAF, [256]] # 6-P4/16
+  - [-1, 1, MGC, [512]]
+  - [-1, 1, LEAF, [256, True, 1, 1.0]] # e=1.0, matching LEAF-YOLO layers 42-49
+  - [-1, 1, SPPF, [256, 5, 3, True]] # 9
+  - [-1, 1, C2PSA, [256]] # 10-P5/32
+
+# LEAF-YOLO neck with the YOLO26 head
+head:
+  - [-1, 1, CoordBlock, [256, 1, 1]]
+  - [-1, 1, nn.Upsample, [None, 2, "nearest"]]
+  - [6, 1, Conv, [128, 1, 1]] # route backbone P4
+  - [[-1, -2], 1, Concat, [1]]
+  - [-1, 1, LEAFT, [256]] # 15-P4/16
+
+  - [-1, 1, CoordBlock, [128, 1, 1]]
+  - [-1, 1, nn.Upsample, [None, 2, "nearest"]]
+  - [4, 1, Conv, [64, 1, 1]] # route backbone P3
+  - [[-1, -2], 1, Concat, [1]]
+  - [-1, 1, LEAFT, [128]] # 20-P3/8
+
+  - [-1, 1, CoordBlock, [64, 1, 1]]
+  - [-1, 1, nn.Upsample, [None, 2, "nearest"]]
+  - [2, 1, Conv, [32, 1, 1]] # route backbone P2
+  - [[-1, -2], 1, Concat, [1]]
+  - [-1, 1, LEAFT, [64]] # 25 (P2/4-xsmall)
+
+  - [-1, 1, GhostConv, [128, 3, 2]]
+  - [[-1, 20], 1, Concat, [1]] # cat head P3
+  - [-1, 1, ELAN, [128]] # 28 (P3/8-small)
+
+  - [-1, 1, GhostConv, [256, 3, 2]]
+  - [[-1, 15], 1, Concat, [1]] # cat head P4
+  - [-1, 1, ELAN, [256]] # 31 (P4/16-medium)
+
+  - [-1, 1, GhostConv, [256, 3, 2]]
+  - [[-1, 10], 1, Concat, [1]] # cat backbone C2PSA
+  - [-1, 1, ELAN, [256]] # 34 (P5/32-large)
+
+  - [25, 1, PConv, [256]] # 35 (P2/4-xsmall)
+  - [28, 1, PConv, [256]] # 36 (P3/8-small)
+  - [31, 1, PConv, [512]] # 37 (P4/16-medium)
+  - [34, 1, PConv, [512]] # 38 (P5/32-large)
+
+  - [[35, 36, 37, 38], 1, Detect, [nc]] # Detect(P2, P3, P4, P5)
