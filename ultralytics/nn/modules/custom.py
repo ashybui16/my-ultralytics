@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from ultralytics.nn.modules.block import C3, C2f
+from ultralytics.nn.modules.block import C3, C2f, RepNCSPELAN4
 from ultralytics.nn.modules.conv import Conv, GhostConv, autopad
 
 __all__ = (
@@ -12,6 +12,8 @@ __all__ = (
     "LEAFT",
     "MGC",
     "SPPRFEM",
+    "Block1",
+    "Block2",
     "CSPRes2B",
     "CoordAtt",
     "CoordBlock",
@@ -570,3 +572,72 @@ class CARAFE(nn.Module):
         )
 
         return (features * weights.unsqueeze(1)).sum(dim=2)
+
+
+class Block1(nn.Module):
+    def __init__(
+        self,
+        c1: int,
+        c2: int,
+        c3: int,
+        c4: int,
+        n: int = 1,
+        e: float = 0.5,
+        n_div: int = 4,
+    ):
+        super().__init__()
+
+        c_ = int(c2 * e)
+        self.cv1 = Conv(c1, c_, 1, 1)
+        self.cv2 = Conv(c1, c_, 1, 1)
+        self.pconvs = nn.ModuleList(PConv(c_, c_, k=3, n_div=n_div) for _ in range(4))
+        self.csp = RepNCSPELAN4(
+            4 * c_,
+            c2,
+            c3,
+            c4,
+            n,
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        first = self.cv1(x)
+        second = self.cv2(x)
+
+        states = [second]
+        for pconv in self.pconvs:
+            states.append(pconv(states[-1]))
+
+        return self.csp(torch.cat((first, states[0], states[2], states[4]), dim=1))
+
+
+class Block2(nn.Module):
+    def __init__(
+        self,
+        c1: int,
+        c2: int,
+        c3: int,
+        c4: int,
+        n: int = 1,
+        e: float = 0.5,
+        n_div: int = 4,
+    ):
+        super().__init__()
+
+        c_ = int(c2 * e)
+        self.cv1 = Conv(c1, c_, 1, 1)
+        self.cv2 = Conv(c1, c_, 1, 1)
+        self.pconvs = nn.ModuleList(PConv(c_, c_, k=3, n_div=n_div) for _ in range(2))
+        self.csp = RepNCSPELAN4(
+            4 * c_,
+            c2,
+            c3,
+            c4,
+            n,
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        states = [self.cv1(x), self.cv2(x)]
+        for pconv in self.pconvs:
+            states.append(pconv(states[-1]))
+
+        return self.csp(torch.cat(states, dim=1))

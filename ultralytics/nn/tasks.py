@@ -38,6 +38,8 @@ from ultralytics.nn.modules import (
     A2C2f,
     AConv,
     ADown,
+    Block1,
+    Block2,
     Bottleneck,
     BottleneckCSP,
     C2f,
@@ -2100,6 +2102,8 @@ def parse_model(d, ch, verbose=True):
             CoordBlock,
             MGC,
             NeXtC2f,
+            Block1,
+            Block2,
         }
     )
     repeat_modules = frozenset(  # modules with 'repeat' arguments
@@ -2169,7 +2173,7 @@ def parse_model(d, ch, verbose=True):
                     args.extend((True, 1.2))
             if m is C2fCIB:
                 legacy = False
-            if m in frozenset({LEAF, LEAFT, ELAN}):  # LEAF-YOLO blocks are YOLO26-era
+            if m in frozenset({LEAF, LEAFT, ELAN, Block1, Block2}):  # LEAF-YOLO blocks are YOLO26-era
                 legacy = False
         elif m is AIFI:
             args = [ch[f], *args]

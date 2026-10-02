@@ -1,0 +1,63 @@
+# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
+
+# Parameters
+nc: 80 # number of classes
+end2end: True # whether to use end-to-end mode
+reg_max: 1 # DFL bins
+
+# backbone
+backbone:
+  # [from, repeats, module, args]
+  - [-1, 1, Conv, [32, 3, 2]] # 0-P1/2
+  - [-1, 1, Conv, [64, 3, 2]]
+  - [-1, 1, Block1, [64, 64, 32, 3]] # 2-P2/4
+  - [-1, 1, MGC, [128]]
+  - [-1, 1, Block1, [128, 128, 64, 3]] # 4-P3/8
+  - [-1, 1, MGC, [192]]
+  - [-1, 1, Block1, [192, 192, 96, 3]] # 6-P4/16
+  - [-1, 1, MGC, [256]]
+  - [-1, 1, Block1, [256, 256, 128, 3]]
+  - [-1, 1, SPPF, [256, 5, 3, True]]
+  - [-1, 1, C2PSA, [256]] # 10-P5/32
+
+# neck with the YOLO26 head
+head:
+  - [-1, 1, Conv, [128, 1, 1]]
+  - [-1, 1, CoordAtt, []]
+  - [-1, 1, nn.Upsample, [None, 2, "nearest"]]
+  - [6, 1, Conv, [96, 1, 1]]
+  - [[-1, -2], 1, Concat, [1]]
+  - [-1, 1, Block2, [192, 192, 96, 2]] # 16-P4/16
+
+  - [-1, 1, Conv, [96, 1, 1]]
+  - [-1, 1, CoordAtt, []]
+  - [-1, 1, nn.Upsample, [None, 2, "nearest"]]
+  - [4, 1, Conv, [64, 1, 1]]
+  - [[-1, -2], 1, Concat, [1]]
+  - [-1, 1, Block2, [128, 128, 64, 2]] # 22-P3/8
+
+  - [-1, 1, Conv, [64, 1, 1]]
+  - [-1, 1, CoordAtt, []]
+  - [-1, 1, nn.Upsample, [None, 2, "nearest"]]
+  - [2, 1, Conv, [32, 1, 1]]
+  - [[-1, -2], 1, Concat, [1]]
+  - [-1, 1, Block2, [64, 64, 32, 2]] # 28 (P2/4-xsmall)
+
+  - [-1, 1, Conv, [128, 3, 2]]
+  - [[-1, 22], 1, Concat, [1]]
+  - [-1, 1, ELAN1, [128, 128, 64]] # 31 (P3/8-small)
+
+  - [-1, 1, Conv, [192, 3, 2]]
+  - [[-1, 16], 1, Concat, [1]]
+  - [-1, 1, ELAN1, [192, 192, 96]] # 34 (P4/16-medium)
+
+  - [-1, 1, Conv, [256, 3, 2]]
+  - [[-1, 10], 1, Concat, [1]]
+  - [-1, 1, ELAN1, [256, 256, 128]] # 37 (P5/32-large)
+
+  - [28, 1, PConv, [128]] # 38 (P2/4-xsmall)
+  - [31, 1, PConv, [128]] # 39 (P3/8-small)
+  - [34, 1, PConv, [256]] # 40 (P4/16-medium)
+  - [37, 1, PConv, [256]] # 41 (P5/32-large)
+
+  - [[38, 39, 40, 41], 1, Detect, [nc]] # Detect(P2, P3, P4, P5)
