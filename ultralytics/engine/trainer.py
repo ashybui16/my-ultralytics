@@ -1152,7 +1152,7 @@ class BaseTrainer:
                     g[3][fullname] = param  # muon params
                 elif "bias" in fullname:  # bias (no decay)
                     g[2][fullname] = param
-                elif isinstance(module, bn) or "logit_scale" in fullname:  # weight (no decay)
+                elif isinstance(module, bn) or "logit_scale" in fullname or "implicit" in fullname:  # weight (no decay)
                     # ContrastiveHead and BNContrastiveHead included here with 'logit_scale'
                     g[1][fullname] = param
                 else:  # weight (with decay)

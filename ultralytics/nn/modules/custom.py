@@ -1,9 +1,12 @@
+import copy
+
 import torch
 import torch.nn.functional as F
 from torch import nn
 
 from ultralytics.nn.modules.block import C3, C2f, RepNCSPELAN4
 from ultralytics.nn.modules.conv import Conv, GhostConv, RepConv, autopad
+from ultralytics.nn.modules.head import Detect
 from ultralytics.utils.ops import make_divisible
 
 __all__ = (
@@ -19,6 +22,8 @@ __all__ = (
     "CoordAtt",
     "CoordBlock",
     "DySample",
+    "IDetect",
+    "ImplicitConv2d",
     "NeXt",
     "NeXtC2f",
     "PConv",
@@ -798,3 +803,54 @@ class RepBlock2(Block2):
     """Block2 with RepPConv in place of PConv."""
 
     pconv = RepPConv
+
+
+class ImplicitConv2d(nn.Conv2d):
+    """1x1 convolution wrapped by YOLOv7 implicit knowledge: (x + ImplicitA) -> conv -> * ImplicitM.
+
+    Args:
+        c1 (int): Number of input channels.
+        c2 (int): Number of output channels.
+    """
+
+    def __init__(self, c1: int, c2: int):
+        super().__init__(c1, c2, 1)
+        self.implicit_a = nn.Parameter(torch.empty(c1).normal_(0.0, 0.02))
+        self.implicit_m = nn.Parameter(torch.empty(c2).normal_(1.0, 0.02))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return super().forward(x + self.implicit_a.view(1, -1, 1, 1)) * self.implicit_m.view(1, -1, 1, 1)
+
+    @torch.no_grad()
+    def fuse(self) -> nn.Conv2d:
+        """Fold the implicit terms into a plain 1x1 convolution for inference."""
+        conv = nn.Conv2d(self.in_channels, self.out_channels, 1).to(self.weight)
+        conv.weight.copy_(self.weight * self.implicit_m.view(-1, 1, 1, 1))
+        conv.bias.copy_((self.bias + self.weight.flatten(1) @ self.implicit_a) * self.implicit_m)
+        return conv.requires_grad_(False)
+
+
+class IDetect(Detect):
+    """YOLOv7 IDetect-style head with implicit 1x1 box/cls branches, trained the YOLO26 way.
+
+    Args:
+        nc (int): Number of classes.
+        reg_max (int): Maximum number of DFL channels.
+        end2end (bool): Whether to add the one-to-one head for NMS-free detection.
+        ch (tuple): Tuple of channel sizes from the neck feature maps.
+    """
+
+    def __init__(self, nc: int = 80, reg_max: int = 16, end2end: bool = False, ch: tuple = ()):
+        super().__init__(nc, reg_max, end2end, ch)
+        self.cv2 = nn.ModuleList(nn.Sequential(ImplicitConv2d(x, 4 * self.reg_max)) for x in ch)
+        self.cv3 = nn.ModuleList(nn.Sequential(ImplicitConv2d(x, self.nc)) for x in ch)
+        if end2end:
+            self.one2one_cv2 = copy.deepcopy(self.cv2)
+            self.one2one_cv3 = copy.deepcopy(self.cv3)
+
+    def fuse(self) -> None:
+        """Remove the unused detection branch and fold implicit knowledge into the remaining convolutions."""
+        super().fuse()
+        for heads in (self.cv2, self.cv3, getattr(self, "one2one_cv2", None), getattr(self, "one2one_cv3", None)):
+            for seq in heads or ():
+                seq[0] = seq[0].fuse()

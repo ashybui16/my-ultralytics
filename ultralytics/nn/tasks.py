@@ -68,6 +68,7 @@ from ultralytics.nn.modules import (
     GhostConv,
     HGBlock,
     HGStem,
+    IDetect,
     ImagePoolingAttn,
     Index,
     LRPCHead,
@@ -415,7 +416,7 @@ class BaseModel(torch.nn.Module):
             for attr in ("cv3", "one2one_cv3")
             for i, seq in enumerate(getattr(m, attr, ()))
             if getattr(seq[-1], "out_channels", None) == tgt_nc
-            for p in ("weight", "bias")
+            for p in ("weight", "bias", "implicit_m")
         }
         remapped = 0
         for k in cls_keys & csd.keys():
@@ -2208,6 +2209,7 @@ def parse_model(d, ch, verbose=True):
         elif m in frozenset(
             {
                 Detect,
+                IDetect,
                 WorldDetect,
                 YOLOEDetect,
                 Segment,
