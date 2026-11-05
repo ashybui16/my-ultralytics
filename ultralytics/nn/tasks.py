@@ -78,6 +78,8 @@ from ultralytics.nn.modules import (
     PRepViTBlock,
     PRepViTC2f,
     PRepViTELAN,
+    RepBlock1,
+    RepBlock2,
     RepC3,
     RepPConv,
     RepViTBlock,
@@ -2112,6 +2114,8 @@ def parse_model(d, ch, verbose=True):
             NeXtC2f,
             Block1,
             Block2,
+            RepBlock1,
+            RepBlock2,
             PRepViTELAN,
             PRepViTC2f,
         }
@@ -2185,7 +2189,7 @@ def parse_model(d, ch, verbose=True):
                     args.extend((True, 1.2))
             if m is C2fCIB:
                 legacy = False
-            if m in frozenset({LEAF, LEAFT, ELAN, Block1, Block2, PRepViTELAN, PRepViTC2f}):  # LEAF-YOLO blocks are YOLO26-era
+            if m in frozenset({LEAF, LEAFT, ELAN, Block1, Block2, RepBlock1, RepBlock2, PRepViTELAN, PRepViTC2f}):  # LEAF-YOLO blocks are YOLO26-era
                 legacy = False
         elif m is AIFI:
             args = [ch[f], *args]
