@@ -75,7 +75,12 @@ from ultralytics.nn.modules import (
     PConv,
     Pose,
     Pose26,
+    PRepViTBlock,
+    PRepViTC2f,
+    PRepViTELAN,
     RepC3,
+    RepPConv,
+    RepViTBlock,
     RepConv,
     RepNCSPELAN4,
     RepVGGDW,
@@ -2095,6 +2100,9 @@ def parse_model(d, ch, verbose=True):
             A2C2f,
             SPDConv,
             PConv,
+            RepPConv,
+            RepViTBlock,
+            PRepViTBlock,
             LEAF,
             LEAFT,
             ELAN,
@@ -2104,6 +2112,8 @@ def parse_model(d, ch, verbose=True):
             NeXtC2f,
             Block1,
             Block2,
+            PRepViTELAN,
+            PRepViTC2f,
         }
     )
     repeat_modules = frozenset(  # modules with 'repeat' arguments
@@ -2127,6 +2137,8 @@ def parse_model(d, ch, verbose=True):
             LEAFT,
             ELAN,
             NeXtC2f,
+            PRepViTELAN,
+            PRepViTC2f,
         }
     )
     for i, (f, n, m, args) in enumerate(d["backbone"] + d["head"]):  # from, number, module, args
@@ -2173,7 +2185,7 @@ def parse_model(d, ch, verbose=True):
                     args.extend((True, 1.2))
             if m is C2fCIB:
                 legacy = False
-            if m in frozenset({LEAF, LEAFT, ELAN, Block1, Block2}):  # LEAF-YOLO blocks are YOLO26-era
+            if m in frozenset({LEAF, LEAFT, ELAN, Block1, Block2, PRepViTELAN, PRepViTC2f}):  # LEAF-YOLO blocks are YOLO26-era
                 legacy = False
         elif m is AIFI:
             args = [ch[f], *args]

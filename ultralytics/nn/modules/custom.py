@@ -3,7 +3,8 @@ import torch.nn.functional as F
 from torch import nn
 
 from ultralytics.nn.modules.block import C3, C2f, RepNCSPELAN4
-from ultralytics.nn.modules.conv import Conv, GhostConv, autopad
+from ultralytics.nn.modules.conv import Conv, GhostConv, RepConv, autopad
+from ultralytics.utils.ops import make_divisible
 
 __all__ = (
     "CARAFE",
@@ -21,6 +22,11 @@ __all__ = (
     "NeXt",
     "NeXtC2f",
     "PConv",
+    "PRepViTBlock",
+    "PRepViTC2f",
+    "PRepViTELAN",
+    "RepPConv",
+    "RepViTBlock",
     "Res2Block",
     "SPDConv",
 )
@@ -40,6 +46,139 @@ class PConv(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x1, x2 = torch.split(x, (self.c_partial, self.c_untouched), dim=1)
         return self.channel_mixer(torch.cat((self.partial_conv(x1), x2), dim=1))
+
+
+class RepPConv(PConv):
+    """PConv whose 3x3 partial convolution is a RepConv, reparameterized to a single 3x3 conv on fuse."""
+
+    def __init__(self, c1: int, c2: int, n_div: int = 4):
+        super().__init__(c1, c2, 3, n_div)
+        self.partial_conv = RepConv(self.c_partial, self.c_partial, act=False)
+
+
+class SE(nn.Module):
+    """Squeeze-and-excitation channel attention."""
+
+    def __init__(self, c1: int, r: float = 0.25):
+        super().__init__()
+        c_ = make_divisible(c1 * r, 8)
+        self.fc = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Conv2d(c1, c_, 1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(c_, c1, 1),
+            nn.Sigmoid(),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return x * self.fc(x)
+
+
+class RepViTBlock(nn.Module):
+    """Stride-1 RepViT block: RepConv depthwise token mixer with SE, then a residual FFN channel mixer.
+
+    Args:
+        c1 (int): Number of input channels.
+        c2 (int): Number of output channels; must equal c1.
+        e (float): FFN hidden channel expansion.
+
+    References:
+        https://github.com/THU-MIG/RepViT
+    """
+
+    def __init__(self, c1: int, c2: int, e: float = 2.0):
+        super().__init__()
+        self.token_mixer = nn.Sequential(RepConv(c1, c1, g=c1, act=False, bn=True), SE(c1))
+        c_ = int(c2 * e)
+        self.channel_mixer = nn.Sequential(Conv(c1, c_, 1), Conv(c_, c2, 1, act=False))
+        nn.init.zeros_(self.channel_mixer[1].bn.weight)  # zero-init residual branch
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.token_mixer(x)
+        return x + self.channel_mixer(x)
+
+
+class PRepViTBlock(nn.Module):
+    """RepViT block with a partial RepConv token mixer and CoordAtt in place of SE.
+
+    Args:
+        c1 (int): Number of input channels.
+        c2 (int): Number of output channels; must equal c1.
+        e (float): FFN hidden channel expansion.
+        n_div (int): Fraction 1/n_div of channels passed through the RepConv; the rest are untouched.
+    """
+
+    def __init__(self, c1: int, c2: int, e: float = 2.0, n_div: int = 4):
+        super().__init__()
+        self.c_partial = c1 // n_div
+        self.c_untouched = c1 - self.c_partial
+        self.partial_conv = RepConv(self.c_partial, self.c_partial, act=False)
+        self.coordatt = CoordAtt(c1)
+        c_ = int(c2 * e)
+        self.channel_mixer = nn.Sequential(Conv(c1, c_, 1), Conv(c_, c2, 1, act=False))
+        nn.init.zeros_(self.channel_mixer[1].bn.weight)  # zero-init residual branch
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x1, x2 = torch.split(x, (self.c_partial, self.c_untouched), dim=1)
+        x = self.coordatt(torch.cat((self.partial_conv(x1), x2), dim=1))
+        return x + self.channel_mixer(x)
+
+
+class PRepViTC2f(C2f):
+    """C2f using PRepViTBlock as the bottleneck.
+
+    Args:
+        c1 (int): Number of input channels.
+        c2 (int): Number of output channels.
+        n (int): Number of PRepViTBlocks.
+        shortcut (bool): Unused; PRepViTBlock always has a residual FFN.
+        g (int): Unused; kept for C2f signature compatibility.
+        e1 (float): Hidden channel expansion.
+        e2 (float): PRepViTBlock FFN hidden channel expansion.
+        n_div (int): PRepViTBlock partial-conv channel divisor.
+    """
+
+    def __init__(
+        self,
+        c1: int,
+        c2: int,
+        n: int = 1,
+        shortcut: bool = False,
+        g: int = 1,
+        e1: float = 0.5,
+        e2: float = 2.0,
+        n_div: int = 4,
+    ):
+        super().__init__(c1, c2, n, shortcut, g, e1)
+        self.m = nn.ModuleList(PRepViTBlock(self.c, self.c, e2, n_div) for _ in range(n))
+
+
+class PRepViTELAN(nn.Module):
+    """ELAN-style block with a chain of PRepViTBlocks, fused by a PRepViTC2f.
+
+    Args:
+        c1 (int): Number of input channels.
+        c2 (int): Number of output channels.
+        n1 (int): Number of chained PRepViTBlocks in the ELAN branch.
+        n2 (int): Number of PRepViTBlocks inside the PRepViTC2f fusion.
+        e1 (float): Branch channel expansion relative to c2.
+        e2 (float): PRepViTBlock FFN hidden channel expansion.
+        n_div (int): PRepViTBlock partial-conv channel divisor.
+    """
+
+    def __init__(self, c1: int, c2: int, n1: int = 1, n2: int = 2, e1: float = 0.5, e2: float = 2.0, n_div: int = 4):
+        super().__init__()
+        c_ = int(c2 * e1)
+        self.cv1 = Conv(c1, c_, 1, 1)
+        self.cv2 = Conv(c1, c_, 1, 1)
+        self.prepvits = nn.ModuleList(PRepViTBlock(c_, c_, e2, n_div) for _ in range(n1))
+        self.fuse = PRepViTC2f((2 + n1) * c_, c2, n2, e1=e1, e2=e2, n_div=n_div)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        states = [self.cv1(x), self.cv2(x)]
+        for prepvit in self.prepvits:
+            states.append(prepvit(states[-1]))
+        return self.fuse(torch.cat(states, dim=1))
 
 
 class SPDConv(nn.Module):

@@ -90,6 +90,11 @@ from .custom import (
     DySample,
     NeXtC2f,
     PConv,
+    PRepViTBlock,
+    PRepViTC2f,
+    PRepViTELAN,
+    RepPConv,
+    RepViTBlock,
     SPDConv,
 )
 from .head import (
@@ -197,6 +202,11 @@ __all__ = (
     "MaxSigmoidAttnBlock",
     "NeXtC2f",
     "PConv",
+    "PRepViTBlock",
+    "PRepViTC2f",
+    "PRepViTELAN",
+    "RepPConv",
+    "RepViTBlock",
     "Pose",
     "Pose26",
     "Proto",
