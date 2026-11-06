@@ -3,13 +3,13 @@ comments: true
 license:
     name: MIT
     url: https://github.com/diode-dataset/diode-devkit/blob/master/LICENSE
-description: Explore the DIODE depth dataset for monocular depth estimation. Learn about its dense indoor/outdoor structure, usage, pretrained models, and role in YOLO26-Depth training.
+description: DIODE is a dense indoor and outdoor depth dataset captured with a FARO laser scanner. Learn its structure, PNG depth format, and role in YOLO26-Depth training.
 keywords: Ultralytics, YOLO, depth estimation, DIODE, dense depth, indoor outdoor, FARO laser scanner, monocular depth, depth dataset
 ---
 
 # DIODE Depth Dataset
 
-[DIODE](https://diode-dataset.org/) (Dense Indoor/Outdoor DEpth) is a real-world dataset with very high-quality dense depth ground truth captured by a FARO Focus survey-grade laser scanner. Uniquely, it covers both indoor and outdoor scenes with the same sensor, making it a high-precision bridge between short-range indoor and long-range outdoor depth for [monocular depth estimation](index.md).
+[DIODE](https://diode-dataset.org/) (Dense Indoor/Outdoor DEpth) is a real-world dataset with very high-quality dense depth ground truth captured by a FARO Focus survey-grade laser scanner. Uniquely, it covers both indoor and outdoor scenes with the same sensor, making it a high-precision bridge between short-range indoor and long-range outdoor depth for monocular [depth estimation](https://www.ultralytics.com/glossary/depth-estimation).
 
 ## Key Features
 
@@ -17,7 +17,6 @@ keywords: Ultralytics, YOLO, depth estimation, DIODE, dense depth, indoor outdoo
 - Covers **both indoor and outdoor** scenes captured with the same sensor.
 - Depth range spans short indoor distances to long outdoor distances, up to approximately 80 m in the Ultralytics mix.
 - Dense, accurate per-pixel ground truth aligned to the RGB frames.
-- Provides high-precision dense ground truth that bridges indoor and outdoor domains.
 
 ## Dataset Structure
 
@@ -26,7 +25,7 @@ The DIODE depth dataset is split into two subsets:
 1. **Train**: 25,458 images with paired depth maps for training.
 2. **Val**: 771 images with paired depth maps for validation during model training.
 
-Each sample consists of one RGB image and one paired uint16 depth PNG with 256 units per meter (`depth_scale: 256`), following the [Ultralytics depth dataset format](index.md). This provides 3.90625 mm resolution while representing the full 80 m outdoor range.
+Each sample consists of one RGB image and one paired uint16 depth PNG with 256 units per meter (`depth_scale: 256`), following the [Ultralytics depth dataset format](index.md). This provides 3.90625 mm resolution while representing the full 80 m outdoor range. The dataset YAML downloads the official DIODE archives (~84 GB) and converts them to this layout automatically on first use.
 
 ## Role in YOLO26-Depth
 
@@ -44,7 +43,7 @@ A YAML file is used to define the dataset configuration. It contains information
 
 ## Usage
 
-To train a YOLO26n-depth model on the DIODE dataset with an image size of 640, you can use the following code snippets. For a comprehensive list of available arguments, refer to the model [Training](../../modes/train.md) page.
+To [train](../../modes/train.md) a [YOLO26n-depth](https://platform.ultralytics.com/ultralytics/yolo26/yolo26n-depth) model on the DIODE dataset with an image size of 640, you can use the following code snippets.
 
 !!! example "Train Example"
 
@@ -69,13 +68,13 @@ To train a YOLO26n-depth model on the DIODE dataset with an image size of 640, y
 
 ## Pretrained Models
 
-The YOLO26 depth family is trained on the broad multi-dataset depth pretraining mix that DIODE is part of. These models auto-download from the latest Ultralytics release, for example [YOLO26x-depth](https://platform.ultralytics.com/ultralytics/yolo26/yolo26x-depth) from v8.4.0, and span a range of sizes for different accuracy and resource requirements.
+The YOLO26 depth family is trained on the broad multi-dataset depth pretraining mix that DIODE is part of. These models auto-download on first use from the Ultralytics [v8.4.0 assets release](https://github.com/ultralytics/assets/releases/tag/v8.4.0), for example [YOLO26x-depth](https://platform.ultralytics.com/ultralytics/yolo26/yolo26x-depth), and span a range of sizes for different accuracy and resource requirements.
 
 ## Citations and Acknowledgments
 
 If you use the DIODE dataset in your research or development work, please cite the following paper:
 
-!!! quote ""
+!!! quote "Citation"
 
     === "BibTeX"
 

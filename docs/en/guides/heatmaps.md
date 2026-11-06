@@ -32,7 +32,7 @@ The [Heatmap solution](../reference/solutions/heatmap.md) in [Ultralytics YOLO26
 
 |                                                         Transportation                                                          |                                                              Retail                                                              |
 | :-----------------------------------------------------------------------------------------------------------------------------: | :------------------------------------------------------------------------------------------------------------------------------: |
-| ![Ultralytics YOLO heatmap overlay showing vehicle traffic density](https://cdn.ul.run/i/704450c331ec65eddec9abe69f1d12fc.avif) | ![Ultralytics YOLO heatmap overlay showing retail customer movement](https://cdn.ul.run/i/17a2a0f51ed28061f9991f3d85c106ae.avif) |
+| ![Ultralytics YOLO heatmap overlay showing vehicle traffic density](https://cdn.ul.run/i/3cd03197081f4d99e3017c7537e01f7a.avif) | ![Ultralytics YOLO heatmap overlay showing retail customer movement](https://cdn.ul.run/i/17a2a0f51ed28061f9991f3d85c106ae.avif) |
 |                                             Ultralytics YOLO Transportation Heatmap                                             |                                                 Ultralytics YOLO Retail Heatmap                                                  |
 
 ## How to Generate Heatmaps with Ultralytics YOLO
@@ -156,7 +156,7 @@ The [Heatmap solution](../reference/solutions/heatmap.md) extends the [ObjectCou
 1. YOLO26 tracking detects and follows every object in the frame
 2. For each tracked object, the heatmap intensity increases within a circular region centered in its bounding box
 
-Once per frame, the accumulated intensity layer is normalized, colorized with the selected colormap, and blended with the original frame. The overlay appears as soon as at least one object is tracked; frames without tracked objects are shown without the heatmap overlay.
+Once per frame, the accumulated intensity layer is normalized, colorized with the selected colormap, and blended with the original frame. The overlay appears once at least one object has been tracked; until then, frames are shown without the heatmap overlay.
 
 The result is a dynamic visualization that builds up over time, revealing traffic patterns, crowd movements, or other spatial behaviors in your video data. When a `region` is set, the solution also [counts objects](object-counting.md) entering and exiting that region while the heatmap builds.
 
@@ -199,6 +199,6 @@ cap.release()
 cv2.destroyAllWindows()
 ```
 
-### What makes Ultralytics YOLO26 heatmaps different from other data visualization tools like those from [OpenCV](https://www.ultralytics.com/glossary/opencv) or Matplotlib?
+### What makes Ultralytics YOLO26 heatmaps different from other data visualization tools like those from OpenCV or Matplotlib?
 
-Ultralytics YOLO26 heatmaps integrate [object detection](https://www.ultralytics.com/glossary/object-detection), tracking, intensity accumulation, and overlay rendering into a single call, while generic tools like OpenCV or Matplotlib require you to build that pipeline yourself. The solution processes video streams in real time and supports persistent tracking and customizable colormaps out of the box. For details on the underlying model, see the [YOLO26 model page](../models/yolo26.md).
+Ultralytics YOLO26 heatmaps integrate [object detection](https://www.ultralytics.com/glossary/object-detection), tracking, intensity accumulation, and overlay rendering into a single call, while generic tools like [OpenCV](https://www.ultralytics.com/glossary/opencv) or Matplotlib require you to build that pipeline yourself. The solution processes video streams in real time and supports persistent tracking and customizable colormaps out of the box.

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 import types
 import zipfile
 from pathlib import Path
@@ -30,12 +32,12 @@ def _litert_gather(self, x: torch.Tensor, index: torch.Tensor) -> torch.Tensor:
 def torch2litert(
     model: torch.nn.Module,
     im: torch.Tensor,
-    file: Path,
-    quantize: int | str | None,
-    calibration_dataset: torch.utils.data.DataLoader | None,
-    metadata: dict | None,
-    prefix: str,
-) -> Path:
+    file: Path | str,
+    quantize: int | str | None = None,
+    calibration_dataset: torch.utils.data.DataLoader | None = None,
+    metadata: dict | None = None,
+    prefix: str = "",
+) -> str:
     """Export a PyTorch model to LiteRT format using litert_torch, with optional INT8 quantization.
 
     Three INT8 schemes are supported via ``quantize``: ``8`` applies static INT8 (int8 weights + int8 activations) and
@@ -56,16 +58,18 @@ def torch2litert(
         prefix (str): Prefix for log messages.
 
     Returns:
-        (Path): Path to the exported ``.tflite`` file with metadata embedded as a ``metadata.json`` entry.
+        (str): Path to the exported ``.tflite`` file with metadata embedded as a ``metadata.json`` entry.
     """
     from ultralytics.utils.checks import check_requirements
 
-    check_requirements(("litert-torch>=0.9.0", "ai-edge-litert>=2.1.4"))
+    check_requirements(("litert-torch>=0.10.0", "ai-edge-litert>=2.3.0"))
     import litert_torch
 
     static_int8 = quantize == 8
     static_int16 = quantize == "w8a16"
     dynamic_int8 = quantize == "w8a32"
+    if (static_int8 or static_int16) and calibration_dataset is None:
+        raise ValueError(f"LiteRT quantize={quantize!r} export requires a calibration dataset.")
     LOGGER.info(f"\n{prefix} starting export with litert_torch {litert_torch.__version__}...")
     file = Path(file)
     quant_tag = "_int8" if static_int8 else "_w8a16" if static_int16 else "_w8a32" if dynamic_int8 else ""
@@ -97,7 +101,7 @@ def torch2litert(
     edge_model.export(tflite_file)
 
     if static_int8 or static_int16 or dynamic_int8:
-        check_requirements("ai-edge-quantizer>=0.6.0")
+        check_requirements("ai-edge-quantizer>=0.10.0")
         from ai_edge_quantizer import qtyping, quantizer, recipe
 
         qt = quantizer.Quantizer(str(tflite_file))
@@ -106,12 +110,7 @@ def torch2litert(
             LOGGER.info(f"{prefix} applying static quantization (int8 weights + {act} activations)...")
             calib_samples = []
             for batch in calibration_dataset:
-                imgs = batch["img"].cpu().float() / 255.0
-                # litert-torch traces a fixed batch; tile under-sized batches up to im's batch dim (repeats are
-                # statistics-identical for calibration)
-                if imgs.shape[0] < im.shape[0]:
-                    imgs = imgs.repeat(-(-im.shape[0] // imgs.shape[0]), 1, 1, 1)[: im.shape[0]]
-                calib_samples.append({"args_0": imgs.numpy()})
+                calib_samples.append({"args_0": (batch["img"].cpu().float() / 255.0).numpy()})
             qt.load_quantization_recipe(recipe.static_wi8_ai8() if static_int8 else recipe.static_wi8_ai16())
             # Keep FP32 graph input/output (weights/activations stay int8/int16 internally): matches the historical
             # onnx2tf "fp32 in/out" contract that downstream consumers (LiteRT GPU delegate, on-device runtimes) expect,
@@ -131,4 +130,38 @@ def torch2litert(
     # self-contained file that LiteRTBackend reads back at load time.
     with zipfile.ZipFile(tflite_file, "a", zipfile.ZIP_DEFLATED) as zf:
         zf.writestr("metadata.json", json.dumps(metadata or {}))
-    return tflite_file
+    return str(tflite_file)
+
+
+def tflite2nxp(tflite_file: str, output_file: Path, metadata: dict) -> str:
+    """Compile an INT8 LiteRT model for i.MX95 using NXP's Neutron SDK 3.3.0.
+
+    Args:
+        tflite_file (str): Calibrated INT8 LiteRT model.
+        output_file (Path): Destination for the compiled model.
+        metadata (dict): Ultralytics metadata to preserve in the compiled model.
+
+    Returns:
+        (str): Path to the compiled model, requiring the matching Neutron runtime on i.MX95.
+    """
+    from ultralytics.utils.checks import check_requirements
+
+    check_requirements("eiq-neutron-sdk==3.3.0", cmds="--extra-index-url https://eiq.nxp.com/repository")
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "eiq_neutron_sdk.neutron_compiler.compiler",
+            "--input",
+            str(tflite_file),
+            "--output",
+            str(output_file),
+            "--target",
+            "imx95",
+            "--dump-statistics",
+        ],
+        check=True,
+    )
+    with zipfile.ZipFile(output_file, "a", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("metadata.json", json.dumps(metadata))
+    return str(output_file)

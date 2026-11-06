@@ -1,16 +1,17 @@
 ---
 comments: true
-description: Learn about object detection with Ultralytics YOLO26. Explore pretrained models, training, validation, prediction, and export details for efficient object recognition.
+description: Object detection with Ultralytics YOLO26. Explore COCO-pretrained models and benchmarks, then train, validate, predict, and export detectors in Python or CLI.
 keywords: object detection, Ultralytics YOLO, YOLO26, pretrained models, training, validation, prediction, export, machine learning, computer vision
+model_name: yolo26n
 ---
 
 # Object Detection with Ultralytics YOLO {#object-detection}
 
-<img width="1024" src="https://cdn.ul.run/i/3072f66ad6b2cc3c423a81128af9842f.avif" alt="Ultralytics YOLO object detection with bounding boxes">
+<img width="1024" src="https://cdn.ul.run/i/e0d2cbeb1a1421b134a38986df7ee7c9.avif" alt="Ultralytics YOLO object detection with bounding boxes">
 
 [Object detection](https://www.ultralytics.com/glossary/object-detection) is a task that involves identifying the location and class of objects in an image or video stream.
 
-The output of an object detector is a set of bounding boxes that enclose the objects in the image, along with class labels and confidence scores for each box. Object detection is a good choice when you need to identify objects of interest in a scene, but don't need to know exactly where the object is or its exact shape.
+The output of an [object detector](https://academy.ultralytics.com/courses/computer-vision-foundations/object-detection) is a set of [bounding boxes](https://www.ultralytics.com/glossary/bounding-box) that enclose the objects in the image, along with class labels and confidence scores for each box. Object detection is a good choice when you need to identify objects of interest in a scene, but don't need to know their exact shape.
 
 <p align="center">
   <br>
@@ -25,25 +26,25 @@ The output of an object detector is a set of bounding boxes that enclose the obj
 
 !!! tip
 
-    YOLO26 Detect models are the default YOLO26 models, i.e., `yolo26n.pt`, and are pretrained on [COCO](https://github.com/ultralytics/ultralytics/blob/main/ultralytics/cfg/datasets/coco.yaml).
+    YOLO26 Detect models are the default YOLO26 models, e.g., `yolo26n.pt`, and are pretrained on [COCO](https://github.com/ultralytics/ultralytics/blob/main/ultralytics/cfg/datasets/coco.yaml).
 
-## [Models](https://github.com/ultralytics/ultralytics/tree/main/ultralytics/cfg/models/26)
+## Models
 
-YOLO26 pretrained Detect models are shown here. Detect, Segment, and Pose models are pretrained on the [COCO](https://github.com/ultralytics/ultralytics/blob/main/ultralytics/cfg/datasets/coco.yaml) dataset, [Semantic](semantic.md) models are pretrained on [Cityscapes](../datasets/semantic/cityscapes.md), and Classify models are pretrained on the [ImageNet](https://github.com/ultralytics/ultralytics/blob/main/ultralytics/cfg/datasets/ImageNet.yaml) dataset.
+YOLO26 Detect models pretrained on the [COCO](../datasets/detect/coco.md) dataset are shown below.
 
-[Models](https://github.com/ultralytics/ultralytics/tree/main/ultralytics/cfg/models) are downloaded automatically from the latest Ultralytics [release](https://github.com/ultralytics/assets/releases) on first use.
+[Models](https://github.com/ultralytics/ultralytics/tree/main/ultralytics/cfg/models) download automatically from the latest Ultralytics [release](https://github.com/ultralytics/assets/releases) on first use.
 
 {% include "macros/yolo-det-perf.md" %}
 
-- **mAP<sup>val</sup>** values are for single-model single-scale on [COCO val2017](https://cocodataset.org/) dataset. <br>Reproduce by `yolo val detect data=coco.yaml device=0`. Add `nms=False` to reproduce the e2e column.
-- **Speed** averaged over COCO val images using an [Amazon EC2 P4d](https://aws.amazon.com/ec2/instance-types/p4/) instance. <br>Reproduce by `yolo val detect data=coco.yaml batch=1 device=0|cpu nms=False`
+- **mAP<sup>val</sup>** values are for single-model single-scale on [COCO val2017](https://cocodataset.org/) dataset. <br>Reproduce with `yolo detect val data=coco.yaml device=0`. Add `nms=False` to reproduce the e2e column.
+- **Speed** averaged over COCO val images with ONNX on CPU and TensorRT10 on an NVIDIA T4 GPU. <br>Reproduce with `yolo detect val data=coco.yaml batch=1 device=0|cpu nms=False`
 - **Params** and **FLOPs** values are for fused models after Conv/BatchNorm folding and removal of the unused detection branch. Pretrained checkpoints retain the full training architecture and may show higher counts.
 
 See the [unreleased YOLO27 preview](../models/yolo27.md#performance-metrics) for preliminary COCO detection results.
 
 ## Train
 
-Train YOLO26n on the COCO8 dataset for 100 [epochs](https://www.ultralytics.com/glossary/epoch) at image size 640. For a full list of available arguments see the [Configuration](../usage/cfg.md) page.
+[Train](../usage/cfg.md#train-settings) a [YOLO26n](https://platform.ultralytics.com/ultralytics/yolo26/yolo26n) model on the [COCO8](https://platform.ultralytics.com/ultralytics/datasets/coco8) dataset for 100 [epochs](https://www.ultralytics.com/glossary/epoch) at image size 640.
 
 !!! example
 
@@ -82,7 +83,7 @@ YOLO detection dataset format can be found in detail in the [Dataset Guide](../d
 
 ## Val
 
-Validate trained YOLO26n model [accuracy](https://www.ultralytics.com/glossary/accuracy) on the COCO8 dataset. No arguments are needed as the `model` retains its training `data` and arguments as model attributes.
+Validate trained YOLO26n model accuracy, measured as [mean average precision (mAP)](https://www.ultralytics.com/glossary/mean-average-precision-map). No arguments are needed, as the `model` retains its training `data` and arguments as model attributes: `path/to/best.pt` from the [Train](#train) example validates on COCO8. Official weights record a training dataset path that doesn't exist on your machine, so they fall back to the task default `coco8.yaml` with a warning. Pass `data` to validate on another dataset.
 
 !!! example
 
@@ -100,15 +101,16 @@ Validate trained YOLO26n model [accuracy](https://www.ultralytics.com/glossary/a
         metrics.box.map  # map50-95
         metrics.box.map50  # map50
         metrics.box.map75  # map75
-        metrics.box.maps  # a list containing mAP50-95 for each category
+        metrics.box.maps  # mAP50-95 per class; classes absent from the val set hold the overall mAP
+        metrics.box.ap_class_index  # class indices that were actually evaluated
         metrics.box.image_metrics  # per-image metrics dictionary with precision, recall, F1, TP, FP, and FN
         ```
 
     === "CLI"
 
         ```bash
-        yolo detect val model=yolo26n.pt      # val official model
-        yolo detect val model=path/to/best.pt # val custom model
+        yolo detect val model=yolo26n.pt data=coco8.yaml             # val official model
+        yolo detect val model=path/to/best.pt data=path/to/data.yaml # val custom model
         ```
 
 ## Predict
@@ -176,7 +178,7 @@ Export a YOLO26n model to a different format like ONNX, CoreML, etc.
 
         # Load a model
         model = YOLO("yolo26n.pt")  # load an official model
-        model = YOLO("path/to/best.pt")  # load a custom-trained model
+        model = YOLO("path/to/best.pt")  # load a custom model
 
         # Export the model
         model.export(format="onnx")
@@ -186,10 +188,10 @@ Export a YOLO26n model to a different format like ONNX, CoreML, etc.
 
         ```bash
         yolo export model=yolo26n.pt format=onnx      # export official model
-        yolo export model=path/to/best.pt format=onnx # export custom-trained model
+        yolo export model=path/to/best.pt format=onnx # export custom model
         ```
 
-Available YOLO26 export formats are in the table below. You can export to any format using the `format` argument, i.e., `format='onnx'` or `format='engine'`. You can predict or validate directly on exported models, i.e., `yolo predict model=yolo26n.onnx`. Usage examples are shown for your model after export completes.
+Available YOLO26 export formats are in the table below. You can export to any format using the `format` argument, e.g., `format='onnx'` or `format='engine'`. You can predict or validate directly on exported models, e.g., `yolo predict model=yolo26n.onnx`. Usage examples are shown for your model after export completes.
 
 {% include "macros/export-table.md" %}
 
@@ -233,7 +235,7 @@ For detailed configuration options, visit the [Configuration](../usage/cfg.md) p
 
 ### What pretrained models are available in YOLO26?
 
-Ultralytics YOLO26 offers various pretrained models for [object detection](detect.md), [instance segmentation](segment.md), [semantic segmentation](semantic.md), and [pose estimation](pose.md). These models are pretrained on the COCO dataset, Cityscapes for semantic segmentation, or ImageNet for classification tasks. Here are some of the available models:
+Ultralytics YOLO26 offers various pretrained models for object detection, [instance segmentation](segment.md), [semantic segmentation](semantic.md), [depth estimation](depth.md), [classification](classify.md), [pose estimation](pose.md), and [oriented bounding boxes](obb.md). These models are pretrained on the COCO dataset, Cityscapes for semantic segmentation, a multi-dataset mix for depth estimation, ImageNet for classification, or DOTAv1 for OBB. Here are some of the available models:
 
 - [YOLO26n](https://platform.ultralytics.com/ultralytics/yolo26/yolo26n)
 - [YOLO26s](https://platform.ultralytics.com/ultralytics/yolo26/yolo26s)
@@ -241,11 +243,9 @@ Ultralytics YOLO26 offers various pretrained models for [object detection](detec
 - [YOLO26l](https://platform.ultralytics.com/ultralytics/yolo26/yolo26l)
 - [YOLO26x](https://platform.ultralytics.com/ultralytics/yolo26/yolo26x)
 
-For a detailed list and performance metrics, refer to the [Models](https://github.com/ultralytics/ultralytics/tree/main/ultralytics/cfg/models/26) section.
-
 ### How can I validate the accuracy of my trained YOLO model?
 
-To validate the accuracy of your trained YOLO26 model, you can use the `.val()` method in Python or the `yolo detect val` command in CLI. This will provide metrics like mAP50-95, mAP50, and more.
+To validate the accuracy of your trained YOLO26 model, you can use the `.val()` method in Python or the `yolo detect val` command in CLI. This will provide metrics like mAP<sub>50-95</sub>, mAP<sub>50</sub>, and more.
 
 !!! example
 
@@ -265,7 +265,7 @@ To validate the accuracy of your trained YOLO26 model, you can use the `.val()` 
     === "CLI"
 
         ```bash
-        yolo detect val model=path/to/best.pt
+        yolo detect val model=path/to/best.pt data=path/to/data.yaml
         ```
 
 For more validation details, visit the [Val](../modes/val.md) page.
@@ -298,11 +298,9 @@ Check the full list of supported formats and instructions on the [Export](../mod
 
 ### Why should I use Ultralytics YOLO26 for object detection?
 
-Ultralytics YOLO26 is designed to offer state-of-the-art performance for [object detection](detect.md), [instance segmentation](segment.md), [semantic segmentation](semantic.md), and [pose estimation](pose.md). Here are some key advantages:
+Ultralytics YOLO26 provides [fast, accurate models](https://www.ultralytics.com/blog/meet-ultralytics-yolo26-a-better-faster-smaller-yolo-model) for object detection, instance segmentation, semantic segmentation, pose estimation, and the other supported tasks. Key advantages include:
 
-1. **Pretrained Models**: Utilize models pretrained on popular datasets like [COCO](../datasets/detect/coco.md) and [ImageNet](../datasets/classify/imagenet.md) for faster development.
-2. **High Accuracy**: Achieves impressive mAP scores, ensuring reliable object detection.
-3. **Speed**: Optimized for [real-time inference](https://www.ultralytics.com/glossary/real-time-inference), making it ideal for applications requiring swift processing.
+1. **Pretrained Models**: Use models pretrained on popular datasets like [COCO](../datasets/detect/coco.md) and [ImageNet](../datasets/classify/imagenet.md) for faster development.
+2. **High Accuracy**: Achieves high [mAP on COCO](#models).
+3. **Speed**: Optimized for [real-time inference](https://www.ultralytics.com/glossary/real-time-inference) in latency-sensitive applications.
 4. **Flexibility**: Export models to various formats like ONNX and TensorRT for deployment across multiple platforms.
-
-Explore our [Blog](https://www.ultralytics.com/blog) for use cases and success stories showcasing YOLO26 in action.

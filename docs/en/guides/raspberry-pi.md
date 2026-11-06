@@ -7,7 +7,7 @@ keywords: Ultralytics, YOLO26, Raspberry Pi, setup, guide, benchmarks, computer 
 
 # Quick Start Guide: Raspberry Pi with Ultralytics YOLO26
 
-[Raspberry Pi](https://www.raspberrypi.com/) is a small, affordable computer that runs [Ultralytics YOLO26](../models/yolo26.md) for real-time [object detection](https://www.ultralytics.com/glossary/object-detection) at the edge — no GPU required. This guide walks you through deploying YOLO26 on Raspberry Pi 4 and 5: flashing the OS, installing Ultralytics, exporting to [NCNN](../integrations/ncnn.md) for the fastest [inference](../modes/predict.md) on ARM, and running predictions on a live camera feed. It also includes performance benchmarks across eight export formats so you can pick the best speed and [accuracy](https://www.ultralytics.com/glossary/accuracy) trade-off for your hardware.
+[Raspberry Pi](https://www.raspberrypi.com/) is a small, affordable computer that runs [Ultralytics YOLO26](../models/yolo26.md) for real-time [object detection](https://www.ultralytics.com/glossary/object-detection) at the [edge](https://www.ultralytics.com/glossary/edge-ai) — no GPU required. This guide walks you through deploying YOLO26 on Raspberry Pi 4 and 5: flashing the OS, installing Ultralytics, exporting to [NCNN](../integrations/ncnn.md) for the fastest [inference](../modes/predict.md) on ARM, and running predictions on a live camera feed. It also includes performance benchmarks across eight export formats so you can pick the best speed and [accuracy](https://www.ultralytics.com/glossary/accuracy) trade-off for your hardware.
 
 Jump to [setting up Ultralytics](#set-up-ultralytics), [exporting to NCNN and running inference](#use-ncnn-on-raspberry-pi), [benchmarks](#raspberry-pi-5-yolo26-benchmarks), or [camera inference](#use-raspberry-pi-camera).
 
@@ -28,7 +28,7 @@ Jump to [setting up Ultralytics](#set-up-ultralytics), [exporting to NCNN and ru
 
 ## What is Raspberry Pi?
 
-Raspberry Pi is a small, affordable, single-board computer. It has become popular for a wide range of projects and applications, from hobbyist home automation to industrial uses. Raspberry Pi boards are capable of running a variety of operating systems, and they offer GPIO (General Purpose Input/Output) pins that allow for easy integration with sensors, actuators, and other hardware components. They come in different models with varying specifications, but they all share the same basic design philosophy of being low-cost, compact, and versatile.
+Raspberry Pi is a small, affordable, single-board computer. It has become popular for a wide range of projects and applications, from hobbyist home automation to industrial uses. [Raspberry Pi boards](https://www.ultralytics.com/partners/raspberry-pi) are capable of running a variety of operating systems, and they offer GPIO (General Purpose Input/Output) pins that allow for easy integration with sensors, actuators, and other hardware components. They come in different models with varying specifications, but they all share the same basic design philosophy of being low-cost, compact, and versatile.
 
 ## Raspberry Pi Series Comparison
 
@@ -36,19 +36,19 @@ Raspberry Pi is a small, affordable, single-board computer. It has become popula
 | ----------------- | -------------------------------------- | -------------------------------------- | -------------------------------------- |
 | CPU               | Broadcom BCM2837, Cortex-A53 64Bit SoC | Broadcom BCM2711, Cortex-A72 64Bit SoC | Broadcom BCM2712, Cortex-A76 64Bit SoC |
 | CPU Max Frequency | 1.4GHz                                 | 1.8GHz                                 | 2.4GHz                                 |
-| GPU               | Videocore IV                           | Videocore VI                           | VideoCore VII                          |
-| GPU Max Frequency | 400Mhz                                 | 500Mhz                                 | 800Mhz                                 |
-| Memory            | 1GB LPDDR2 SDRAM                       | 1GB, 2GB, 4GB, 8GB LPDDR4-3200 SDRAM   | 4GB, 8GB LPDDR4X-4267 SDRAM            |
+| GPU               | VideoCore IV                           | VideoCore VI                           | VideoCore VII                          |
+| GPU Max Frequency | 400MHz                                 | 500MHz                                 | 800MHz                                 |
+| Memory            | 1GB LPDDR2 SDRAM                       | 1GB, 2GB, 4GB, 8GB LPDDR4-3200 SDRAM   | 2GB, 4GB, 8GB, 16GB LPDDR4X-4267 SDRAM |
 | PCIe              | N/A                                    | N/A                                    | 1xPCIe 2.0 Interface                   |
 | Max Power Draw    | 2.5A@5V                                | 3A@5V                                  | 5A@5V (PD enabled)                     |
 
 ## What is Raspberry Pi OS?
 
-[Raspberry Pi OS](https://www.raspberrypi.com/software/) (formerly known as Raspbian) is a Unix-like operating system based on the Debian GNU/Linux distribution for the Raspberry Pi family of compact single-board computers distributed by the Raspberry Pi Foundation. Raspberry Pi OS is highly optimized for the Raspberry Pi with ARM CPUs and uses a modified LXDE desktop environment with the Openbox stacking window manager. Raspberry Pi OS is under active development, with an emphasis on improving the stability and performance of as many Debian packages as possible on Raspberry Pi.
+[Raspberry Pi OS](https://www.raspberrypi.com/software/) (formerly known as Raspbian) is a Unix-like operating system based on the Debian GNU/Linux distribution for the Raspberry Pi family of compact single-board computers distributed by the Raspberry Pi Foundation. Raspberry Pi OS is highly optimized for the Raspberry Pi with ARM CPUs and uses a lightweight desktop environment that runs on Wayland by default on Raspberry Pi 4 and 5. Raspberry Pi OS is under active development, with an emphasis on improving the stability and performance of as many Debian packages as possible on Raspberry Pi.
 
 ## Flash Raspberry Pi OS to Raspberry Pi
 
-The first thing to do after getting your hands on a Raspberry Pi is to flash a micro-SD card with Raspberry Pi OS, insert into the device and boot into the OS. Follow along with detailed [Getting Started Documentation by Raspberry Pi](https://www.raspberrypi.com/documentation/computers/getting-started.html) to prepare your device for first use.
+The first thing to do after getting your hands on a Raspberry Pi is to flash a micro-SD card with Raspberry Pi OS, insert it into the device, and boot into the OS. Follow the detailed [Getting Started Documentation by Raspberry Pi](https://www.raspberrypi.com/documentation/computers/getting-started.html) to prepare your device for first use.
 
 ## Set Up Ultralytics
 
@@ -61,7 +61,7 @@ You can set up the Ultralytics package on Raspberry Pi in two ways for your next
 
 The fastest way to get started with Ultralytics YOLO26 on Raspberry Pi is to run with a pre-built Docker image for Raspberry Pi.
 
-Execute the below command to pull the Docker container and run on Raspberry Pi. This is based on the [arm64v8/ubuntu](https://hub.docker.com/r/arm64v8/ubuntu) Docker image, which runs Ubuntu 24.04 in a Python3 environment.
+Run the command below to pull the Docker container and run it on Raspberry Pi. This is based on the official [Python](https://hub.docker.com/_/python) `3.13-slim-trixie` image, which runs Debian 13 with Python 3.13.
 
 ```bash
 t=ultralytics/ultralytics:latest-arm64
@@ -98,7 +98,7 @@ Here we will install the Ultralytics package on the Raspberry Pi. Export depende
 
 ## Use NCNN on Raspberry Pi
 
-Out of all the model [export formats](../modes/export.md) supported by Ultralytics, [NCNN](../integrations/ncnn.md) delivers the best inference performance on Raspberry Pi devices because it is highly optimized for mobile/embedded platforms such as ARM architecture. Convert your YOLO26n PyTorch model to NCNN, then run inference with the exported model:
+Out of all the model [export formats](../modes/export.md) supported by Ultralytics, [NCNN](../integrations/ncnn.md) delivers the best inference performance on Raspberry Pi devices because it is highly optimized for mobile and embedded platforms such as ARM. Convert your [YOLO26n](https://platform.ultralytics.com/ultralytics/yolo26/yolo26n) PyTorch model to NCNN, then run inference with the exported model:
 
 !!! example
 
@@ -136,7 +136,7 @@ Out of all the model [export formats](../modes/export.md) supported by Ultralyti
 
 ## YOLO26 Performance Improvements over YOLO11
 
-YOLO26 is specifically designed to run on hardware-constrained devices such as the Raspberry Pi 5. Compared to YOLO11n, YOLO26n achieves a ~15% increase in FPS (6.79 → 7.79) while also delivering higher mAP (40.1 vs 39.5) at 640 input size with ONNX-exported models on the Raspberry Pi 5. The table and chart below showcase this comparison.
+YOLO26 is specifically designed to run on hardware-constrained devices such as the Raspberry Pi 5. Compared to YOLO11n, YOLO26n achieves a ~15% increase in FPS (6.79 → 7.79) while also delivering higher [mAP](https://www.ultralytics.com/glossary/mean-average-precision-map) (40.1 vs 39.5) at 640 input size with ONNX-exported models on the Raspberry Pi 5. The table and chart below showcase this comparison.
 
 <figure style="text-align: center;">
     <img width="800" src="https://cdn.ul.run/i/b2c28f4a5cfa8bc9cb64ce4d7daabaa8.avif" alt="YOLO26 benchmarks on RPi 5">
@@ -147,33 +147,33 @@ YOLO26 is specifically designed to run on hardware-constrained devices such as t
 
     === "YOLO26 (ONNX)"
 
-        | Model   | mAP50-95(B) | Inference time (ms/im) |
-        | ------- | ----------- | ---------------------- |
-        | YOLO26n | 40.1        | 128.42                 |
-        | YOLO26s | 47.8        | 352.84                 |
-        | YOLO26m | 52.5        | 993.78                 |
-        | YOLO26l | 54.4        | 1259.46                |
-        | YOLO26x | 56.9        | 2636.26                |
+        | Model   | mAP<sub>50-95</sub>(B) | Inference time (ms/im) |
+        | ------- | ---------------------- | ---------------------- |
+        | YOLO26n | 40.1                   | 128.42                 |
+        | YOLO26s | 47.8                   | 352.84                 |
+        | YOLO26m | 52.5                   | 993.78                 |
+        | YOLO26l | 54.4                   | 1259.46                |
+        | YOLO26x | 56.9                   | 2636.26                |
 
     === "YOLO11 (ONNX)"
 
-        | Model   | mAP50-95(B) | Inference time (ms/im) |
-        | ------- | ----------- | ---------------------- |
-        | YOLO11n | 39.5        | 147.20                 |
-        | YOLO11s | 47.0        | 366.83                 |
-        | YOLO11m | 51.5        | 997.46                 |
-        | YOLO11l | 53.4        | 1274.95                |
-        | YOLO11x | 54.7        | 2646.76                |
+        | Model   | mAP<sub>50-95</sub>(B) | Inference time (ms/im) |
+        | ------- | ---------------------- | ---------------------- |
+        | YOLO11n | 39.5                   | 147.20                 |
+        | YOLO11s | 47.0                   | 366.83                 |
+        | YOLO11m | 51.5                   | 997.46                 |
+        | YOLO11l | 53.4                   | 1274.95                |
+        | YOLO11x | 54.7                   | 2646.76                |
 
     Benchmarked with Ultralytics 8.4.14.
 
 ## Raspberry Pi 5 YOLO26 Benchmarks
 
-YOLO26 [benchmarks](../modes/benchmark.md) were run by the Ultralytics team on eight different model formats measuring speed and [accuracy](https://www.ultralytics.com/glossary/accuracy): PyTorch, TorchScript, ONNX, OpenVINO, MNN, NCNN, ExecuTorch, LiteRT. Benchmarks were run on a Raspberry Pi 5 at FP32 [precision](https://www.ultralytics.com/glossary/precision) with default input image size of 640.
+YOLO26 [benchmarks](../modes/benchmark.md) were run by the Ultralytics team on eight different model formats measuring speed and accuracy: PyTorch, TorchScript, ONNX, OpenVINO, LiteRT, MNN, NCNN, ExecuTorch. Benchmarks were run on a Raspberry Pi 5 at FP32 precision with the default input image size of 640.
 
 ### Comparison Chart
 
-We have only included benchmarks for YOLO26n and YOLO26s models because other model sizes are too big to run on the Raspberry Pis and do not offer decent performance.
+Only YOLO26n and YOLO26s are included because larger model sizes run too slowly on Raspberry Pi to be practical.
 
 <figure style="text-align: center;">
     <img width="800" src="https://cdn.ul.run/i/66e238f32755a6739f7a75f1ad67b629.avif" alt="YOLO26 benchmarks on RPi 5">
@@ -182,35 +182,35 @@ We have only included benchmarks for YOLO26n and YOLO26s models because other mo
 
 ### Detailed Comparison Table
 
-The below table represents the benchmark results for two different models (YOLO26n, YOLO26s) across eight different formats (PyTorch, TorchScript, ONNX, OpenVINO, MNN, NCNN, ExecuTorch, LiteRT), running on a Raspberry Pi 5, giving us the status, size, mAP50-95(B) metric, and inference time for each combination.
+The table below shows the benchmark results for two different models (YOLO26n, YOLO26s) across eight different formats (PyTorch, TorchScript, ONNX, OpenVINO, LiteRT, MNN, NCNN, ExecuTorch), running on a Raspberry Pi 5, giving the status, size, mAP<sub>50-95</sub>(B) metric, and inference time for each combination.
 
 !!! tip "Performance"
 
     === "YOLO26n"
 
-        | Format      | Status | Size on disk (MB) | mAP50-95(B) | Inference time (ms/im) |
-        | ----------- | ------ | ----------------- | ----------- | ---------------------- |
-        | PyTorch     | ✅     | 5.3               | 0.4760      | 299.09                 |
-        | TorchScript | ✅     | 9.8               | 0.4734      | 353.20                 |
-        | ONNX        | ✅     | 9.5               | 0.4734      | 125.99                 |
-        | OpenVINO    | ✅     | 9.6               | 0.4734      | 104.55                 |
-        | MNN         | ✅     | 9.4               | 0.4749      | 91.87                  |
-        | NCNN        | ✅     | 9.4               | 0.4784      | 67.03                  |
-        | ExecuTorch  | ✅     | 9.4               | 0.4772      | 144.83                 |
-        | LiteRT      | ✅     | 9.8               | 0.4730      | 123.30                 |
+        | Format      | Status | Size on disk (MB) | mAP<sub>50-95</sub>(B) | Inference time (ms/im) |
+        | ----------- | ------ | ----------------- | ---------------------- | ---------------------- |
+        | PyTorch     | ✅     | 5.3               | 0.4760                 | 299.09                 |
+        | TorchScript | ✅     | 9.8               | 0.4734                 | 353.20                 |
+        | ONNX        | ✅     | 9.5               | 0.4734                 | 125.99                 |
+        | OpenVINO    | ✅     | 9.6               | 0.4734                 | 104.55                 |
+        | LiteRT      | ✅     | 9.8               | 0.4730                 | 123.30                 |
+        | MNN         | ✅     | 9.4               | 0.4749                 | 91.87                  |
+        | NCNN        | ✅     | 9.4               | 0.4784                 | 67.03                  |
+        | ExecuTorch  | ✅     | 9.4               | 0.4772                 | 144.83                 |
 
     === "YOLO26s"
 
-        | Format      | Status | Size on disk (MB) | mAP50-95(B) | Inference time (ms/im) |
-        | ----------- | ------ | ----------------- | ----------- | ---------------------- |
-        | PyTorch     | ✅     | 19.5              | 0.5703      | 848.65                 |
-        | TorchScript | ✅     | 36.8              | 0.5632      | 1053.24                |
-        | ONNX        | ✅     | 36.5              | 0.5632      | 355.69                 |
-        | OpenVINO    | ✅     | 36.7              | 0.5632      | 281.78                 |
-        | MNN         | ✅     | 36.4              | 0.5614      | 237.24                 |
-        | NCNN        | ✅     | 36.4              | 0.5684      | 172.88                 |
-        | ExecuTorch  | ✅     | 36.5              | 0.5670      | 376.48                 |
-        | LiteRT      | ✅     | 36.8              | 0.5630      | 360.00                 |
+        | Format      | Status | Size on disk (MB) | mAP<sub>50-95</sub>(B) | Inference time (ms/im) |
+        | ----------- | ------ | ----------------- | ---------------------- | ---------------------- |
+        | PyTorch     | ✅     | 19.5              | 0.5703                 | 848.65                 |
+        | TorchScript | ✅     | 36.8              | 0.5632                 | 1053.24                |
+        | ONNX        | ✅     | 36.5              | 0.5632                 | 355.69                 |
+        | OpenVINO    | ✅     | 36.7              | 0.5632                 | 281.78                 |
+        | LiteRT      | ✅     | 36.8              | 0.5630                 | 360.00                 |
+        | MNN         | ✅     | 36.4              | 0.5614                 | 237.24                 |
+        | NCNN        | ✅     | 36.4              | 0.5684                 | 172.88                 |
+        | ExecuTorch  | ✅     | 36.5              | 0.5670                 | 376.48                 |
 
     Benchmarked with Ultralytics 8.4.108
 
@@ -247,11 +247,11 @@ To reproduce the above Ultralytics benchmarks on all [export formats](../modes/e
 
 !!! note "LiteRT export runs off-device"
 
-    `litert-converter` ships no `aarch64` Linux wheel, so `format=litert` export is only supported on Linux x86_64 and macOS, not on the Raspberry Pi itself. Export the `.tflite` model on a Linux x86_64 machine or a Mac, copy it to the Raspberry Pi, and use the Pi for inference.
+    `format=litert` export (via `litert-torch`) is only supported on Linux x86_64 and macOS, not on the Raspberry Pi itself. Export the `.tflite` model on a Linux x86_64 machine or a Mac, copy it to the Raspberry Pi, and use the Pi for inference.
 
 ## Use Raspberry Pi Camera
 
-When using Raspberry Pi for Computer Vision projects, it can be essential to grab real-time video feeds to perform inference. The onboard MIPI CSI connector on the Raspberry Pi allows you to connect official Raspberry PI camera modules. In this guide, we have used a [Raspberry Pi Camera Module 3](https://www.raspberrypi.com/products/camera-module-3/) to grab the video feeds and perform inference using YOLO26 models.
+Computer vision projects on Raspberry Pi often need real-time video feeds for inference. The onboard MIPI CSI connector on the Raspberry Pi allows you to connect official Raspberry Pi camera modules. In this guide, we have used a [Raspberry Pi Camera Module 3](https://www.raspberrypi.com/products/camera-module-3/) to grab the video feeds and perform inference using YOLO26 models.
 
 !!! tip
 
@@ -259,19 +259,15 @@ When using Raspberry Pi for Computer Vision projects, it can be essential to gra
 
 !!! note
 
-    Raspberry Pi 5 uses smaller CSI connectors than the Raspberry Pi 4 (15-pin vs 22-pin), so you will need a [15-pin to 22-pin adapter cable](https://www.raspberrypi.com/products/camera-cable/) to connect to a Raspberry Pi Camera.
+    Raspberry Pi 5 uses smaller CSI connectors than the Raspberry Pi 4 (22-pin vs 15-pin), so you will need a [15-pin to 22-pin adapter cable](https://www.raspberrypi.com/products/camera-cable/) to connect to a Raspberry Pi Camera.
 
 ### Test the Camera
 
-Execute the following command after connecting the camera to the Raspberry Pi. You should see a live video feed from the camera for about 5 seconds.
+Execute the following [`rpicam-hello`](https://www.raspberrypi.com/documentation/computers/camera_software.html#rpicam-hello) command after connecting the camera to the Raspberry Pi. You should see a live video feed from the camera for about 5 seconds.
 
 ```bash
 rpicam-hello
 ```
-
-!!! tip
-
-    Learn more about [`rpicam-hello` usage on official Raspberry Pi documentation](https://www.raspberrypi.com/documentation/computers/camera_software.html#rpicam-hello)
 
 ### Inference with Camera
 
@@ -281,7 +277,7 @@ There are two methods of using the Raspberry Pi Camera to run inference on YOLO2
 
     === "Method 1"
 
-        We can use `picamera2` which comes pre-installed with Raspberry Pi OS to access the camera and run inference on YOLO26 models.
+        Use `picamera2`, which comes pre-installed with Raspberry Pi OS, to access the camera and run inference on YOLO26 models.
 
         !!! example
 
@@ -327,13 +323,11 @@ There are two methods of using the Raspberry Pi Camera to run inference on YOLO2
 
     === "Method 2"
 
-        We need to initiate a TCP stream with `rpicam-vid` from the connected camera so that we can use this stream URL as an input when we are inferencing later. Execute the following command to start the TCP stream.
+        Start a TCP stream with [`rpicam-vid`](https://www.raspberrypi.com/documentation/computers/camera_software.html#rpicam-vid) from the connected camera, then use the stream URL as the [inference source](../modes/predict.md#inference-sources). Run the following command to start the TCP stream.
 
         ```bash
         rpicam-vid -n -t 0 --inline --listen -o tcp://127.0.0.1:8888
         ```
-
-        Learn more about [`rpicam-vid` usage on official Raspberry Pi documentation](https://www.raspberrypi.com/documentation/computers/camera_software.html#rpicam-vid)
 
         !!! example
 
@@ -355,17 +349,13 @@ There are two methods of using the Raspberry Pi Camera to run inference on YOLO2
                 yolo predict model=yolo26n.pt source="tcp://127.0.0.1:8888"
                 ```
 
-!!! tip
-
-    Check our document on [Inference Sources](../modes/predict.md#inference-sources) if you want to change the image/video input type
-
 ## Best Practices when using Raspberry Pi
 
-There are a couple of best practices to follow in order to enable maximum performance on Raspberry Pis running YOLO26.
+Follow these best practices to get maximum performance from YOLO26 on Raspberry Pi.
 
 1. Use an SSD
 
-    When using Raspberry Pi for 24x7 continued usage, it is recommended to use an SSD for the system because an SD card will not be able to withstand continuous writes and might get broken. With the onboard PCIe connector on the Raspberry Pi 5, now you can connect SSDs using an adapter such as the [NVMe Base for Raspberry Pi 5](https://shop.pimoroni.com/products/nvme-base).
+    For continuous 24/7 operation, use an SSD for the system because an SD card may wear out or fail under continuous writes. With the onboard PCIe connector on the Raspberry Pi 5, you can connect SSDs using an adapter such as the [NVMe Base for Raspberry Pi 5](https://shop.pimoroni.com/products/nvme-base).
 
 2. Flash without GUI
 
@@ -434,7 +424,7 @@ For detailed instructions, refer to the [Start without Docker](#start-without-do
 
 ### Why should I use Ultralytics YOLO26's NCNN format on Raspberry Pi for AI tasks?
 
-Ultralytics YOLO26's NCNN format is highly optimized for mobile and embedded platforms, making it ideal for running AI tasks on Raspberry Pi devices. NCNN maximizes inference performance by leveraging ARM architecture, providing faster and more efficient processing compared to other formats. For more details on supported export formats, see the [model export options](model-deployment-options.md).
+NCNN is highly optimized for mobile and embedded platforms, making it a strong choice for running YOLO26 on Raspberry Pi devices. Its ARM-optimized kernels deliver faster inference on the Pi than the other export formats in the [benchmarks above](#raspberry-pi-5-yolo26-benchmarks).
 
 ### How can I convert a YOLO26 model to NCNN format for use on Raspberry Pi?
 
@@ -478,7 +468,7 @@ Key differences include:
 
 - **CPU**: Raspberry Pi 4 uses Broadcom BCM2711, Cortex-A72 64-bit SoC, while Raspberry Pi 5 uses Broadcom BCM2712, Cortex-A76 64-bit SoC.
 - **Max CPU Frequency**: Raspberry Pi 4 has a max frequency of 1.8GHz, whereas Raspberry Pi 5 reaches 2.4GHz.
-- **Memory**: Raspberry Pi 4 offers up to 8GB of LPDDR4-3200 SDRAM, while Raspberry Pi 5 features LPDDR4X-4267 SDRAM, available in 4GB and 8GB variants.
+- **Memory**: Raspberry Pi 4 offers up to 8GB of LPDDR4-3200 SDRAM, while Raspberry Pi 5 features LPDDR4X-4267 SDRAM, available in 2GB, 4GB, 8GB, and 16GB variants.
 
 These enhancements contribute to better performance benchmarks for YOLO26 models on Raspberry Pi 5 compared to Raspberry Pi 4. Refer to the [Raspberry Pi Series Comparison](#raspberry-pi-series-comparison) table for more details.
 

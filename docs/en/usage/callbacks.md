@@ -1,30 +1,30 @@
 ---
 title: Training Callbacks
 comments: true
-description: Explore Ultralytics callbacks for training, validation, exporting, and prediction. Learn how to use and customize them for your ML models.
+description: Ultralytics YOLO callbacks run custom code at key stages of training, validation, prediction, and export. See every hook and register your own in Python.
 keywords: Ultralytics, callbacks, training, validation, export, prediction, ML models, YOLO, Python, machine learning
 ---
 
 # Callbacks
 
-Ultralytics framework supports callbacks, which serve as entry points at strategic stages during the `train`, `val`, `export`, and `predict` modes. Each callback accepts a `Trainer`, `Validator`, or `Predictor` object, depending on the operation type. All properties of these objects are detailed in the [`BaseTrainer`](../reference/engine/trainer.md), [`BaseValidator`](../reference/engine/validator.md), and [`BasePredictor`](../reference/engine/predictor.md) reference pages.
+The Ultralytics framework supports [callbacks](https://www.ultralytics.com/glossary/callback), which serve as entry points at key stages of the `train`, `val`, `predict`, and `export` modes. Each callback accepts a [`Trainer`](../reference/engine/trainer.md), [`Validator`](../reference/engine/validator.md), [`Predictor`](../reference/engine/predictor.md), or [`Exporter`](../reference/engine/exporter.md) object, depending on the operation type.
 
 <p align="center">
   <br>
-  <iframe loading="lazy" width="720" height="405" src="https://www.youtube.com/embed/ENQXiK7HF5o"
+  <iframe loading="lazy" width="720" height="405" src="https://www.youtube.com/embed/GW5z7HX4Jds"
     title="YouTube video player" frameborder="0"
     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
     allowfullscreen>
   </iframe>
   <br>
-  <strong>Watch:</strong> How to use Ultralytics Callbacks | Predict, Train, Validate and Export Callbacks | Ultralytics YOLO🚀
+  <strong>Watch:</strong> How to use Ultralytics Callbacks | Predict, Train, Validate and Export Callbacks | Ultralytics YOLO26 🚀
 </p>
 
 ## Examples
 
 ### Returning Additional Information with Prediction
 
-In this example, we demonstrate how to return the original frame along with each result object:
+This example returns the original frame along with each result object:
 
 ```python
 from ultralytics import YOLO
@@ -83,11 +83,13 @@ model.train(data="coco8.yaml", epochs=1)
 `unwrap_model()` handles both single-device and DistributedDataParallel training. Do not attach a locally defined hook
 to `trainer.ema.ema`, because training checkpoints serialize the EMA model and another process may not be able to import
 the callback when loading the checkpoint. If the same preprocessing must run during training validation, implement it
-as an importable model component instead of a runtime hook.
+as an importable model component instead of a runtime hook. NaN recovery rebuilds the EMA from the training model, so a
+hook registered this way is copied into the EMA and saved checkpoints after a recovery; define the hook function in an
+importable module if checkpoints must load in another process.
 
-Standalone `model.val()` copies the loaded model for each call. Prediction creates and caches a copy on its first call, so register
-hooks on `model.model` before the first `model.predict()` or `model.track()` call; hooks added afterward do not reach
-the cached predictor. Register runtime hooks again after loading a checkpoint in a new process.
+Standalone `model.val()` copies the loaded model for each call. Prediction creates and caches a copy on its first call,
+so register hooks on `model.model` before the first `model.predict()` or `model.track()` call; hooks added afterward do
+not reach the cached predictor. Register runtime hooks again after loading a checkpoint in a new process.
 
 ### Access Model metrics using the `on_model_save` callback
 
@@ -130,7 +132,7 @@ Below are all the supported callbacks. For more details, refer to the callbacks 
 | `on_pretrain_routine_start` | Triggered at the beginning of the pre-training routine, before data loading and model setup.                                                                                                                                                                                                                                     |
 | `on_pretrain_routine_end`   | Triggered at the end of the pre-training routine, after data loading and model setup are complete.                                                                                                                                                                                                                               |
 | `on_train_start`            | Triggered when the training starts, before the first [epoch](https://www.ultralytics.com/glossary/epoch) begins.                                                                                                                                                                                                                 |
-| `on_train_epoch_start`      | Triggered at the start of each training [epoch](https://www.ultralytics.com/glossary/epoch), before batch iteration begins.                                                                                                                                                                                                      |
+| `on_train_epoch_start`      | Triggered at the start of each training epoch, before batch iteration begins.                                                                                                                                                                                                                                                    |
 | `on_train_batch_start`      | Triggered at the start of each training batch, before the forward pass.                                                                                                                                                                                                                                                          |
 | `optimizer_step`            | Triggered during the optimizer step. Reserved for custom integrations; not called by the default training loop.                                                                                                                                                                                                                  |
 | `on_before_zero_grad`       | Triggered before gradients are zeroed. Reserved for custom integrations; not called by the default training loop.                                                                                                                                                                                                                |
@@ -172,7 +174,7 @@ Below are all the supported callbacks. For more details, refer to the callbacks 
 
 ### What are Ultralytics callbacks and how can I use them?
 
-Ultralytics callbacks are specialized entry points that are triggered during key stages of model operations such as training, validation, exporting, and prediction. These callbacks enable custom functionality at specific points in the process, allowing for enhancements and modifications to the workflow. Each callback accepts a `Trainer`, `Validator`, or `Predictor` object, depending on the operation type. For detailed properties of these objects, refer to the [`BaseTrainer`](../reference/engine/trainer.md), [`BaseValidator`](../reference/engine/validator.md), and [`BasePredictor`](../reference/engine/predictor.md) reference pages.
+Ultralytics callbacks are entry points that are triggered during key stages of model operations such as training, validation, prediction, and export. They let you add custom functionality at specific points in the process without modifying the library. Each callback accepts a [`Trainer`](../reference/engine/trainer.md), [`Validator`](../reference/engine/validator.md), [`Predictor`](../reference/engine/predictor.md), or [`Exporter`](../reference/engine/exporter.md) object, depending on the operation type.
 
 To use a callback, define a function and add it to the model using the [`model.add_callback()`](../reference/engine/model.md#ultralytics.engine.model.Model.add_callback) method. Here is an example of returning additional information during prediction:
 
@@ -197,34 +199,31 @@ for result, frame in model.predict():
 
 Customize your Ultralytics training routine by injecting logic at specific stages of the training process. Ultralytics YOLO provides a variety of training callbacks, such as `on_train_start`, `on_train_end`, and `on_train_batch_end`, which allow you to add custom metrics, processing, or logging.
 
-Here's how to freeze BatchNorm statistics when freezing layers with callbacks:
+Here's how to log the learning rate of each optimizer parameter group at the end of every training epoch:
 
 ```python
 from ultralytics import YOLO
 
 
-# Add a callback to put the frozen layers in eval mode to prevent BN values from changing
-def put_in_eval_mode(trainer):
-    n_layers = trainer.args.freeze
-    if not isinstance(n_layers, int):
-        return
-
-    for i, (name, module) in enumerate(trainer.model.named_modules()):
-        if name.endswith("bn") and int(name.split(".")[1]) < n_layers:
-            module.eval()
-            module.track_running_stats = False
+def log_learning_rates(trainer):
+    """Print the current learning rates after each training epoch."""
+    print(f"Epoch {trainer.epoch + 1}: {trainer.lr}")
 
 
 model = YOLO("yolo26n.pt")
-model.add_callback("on_train_epoch_start", put_in_eval_mode)
-model.train(data="coco.yaml", epochs=10)
+model.add_callback("on_train_epoch_end", log_learning_rates)
+model.train(data="coco8.yaml", epochs=3)
 ```
+
+!!! tip
+
+    You don't need a callback to freeze [BatchNorm](https://www.ultralytics.com/glossary/batch-normalization) statistics when using `freeze`: the trainer automatically puts the BatchNorm layers of frozen layers in eval mode at the start of every epoch.
 
 For more details on effectively using training callbacks, see the [Training Guide](../modes/train.md).
 
 ### Why should I use callbacks during validation in Ultralytics YOLO?
 
-Using callbacks during validation in Ultralytics YOLO enhances model evaluation by enabling custom processing, logging, or metrics calculation. Callbacks like `on_val_start`, `on_val_batch_end`, and `on_val_end` provide entry points to inject custom logic, ensuring detailed and comprehensive validation processes.
+Validation callbacks let you add custom processing, logging, or metrics calculation to model evaluation. Callbacks like `on_val_start`, `on_val_batch_end`, and `on_val_end` provide entry points to inject custom logic at each stage of validation.
 
 For example, to plot all validation batches instead of just the first three:
 
@@ -283,7 +282,7 @@ For more comprehensive usage, refer to the [Prediction Guide](../modes/predict.m
 
 Ultralytics YOLO supports various practical implementations of callbacks to enhance and customize different phases like training, validation, and prediction. Some practical examples include:
 
-- **Logging Custom Metrics**: Log additional metrics at different stages, such as at the end of training or validation [epochs](https://www.ultralytics.com/glossary/epoch).
+- **Logging Custom Metrics**: Log additional metrics at different stages, such as at the end of training or validation epochs.
 - **[Data Augmentation](https://www.ultralytics.com/glossary/data-augmentation)**: Implement custom data transformations or augmentations during prediction or training batches.
 - **Intermediate Results**: Save intermediate results, such as predictions or frames, for further analysis or visualization.
 

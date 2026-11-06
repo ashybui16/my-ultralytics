@@ -1,6 +1,6 @@
 ---
 title: Python Package Privacy & Data Collection
-description: Discover how Ultralytics collects and uses anonymized data to enhance the YOLO Python package while prioritizing user privacy and control.
+description: Learn what anonymized usage data and crash reports the Ultralytics Python package collects, how they are used, and how to opt out with sync=False.
 keywords: Ultralytics, data collection, YOLO, Python package, Google Analytics, Sentry, privacy, anonymized data, user control, crash reporting
 ---
 
@@ -8,7 +8,7 @@ keywords: Ultralytics, data collection, YOLO, Python package, Google Analytics, 
 
 ## Overview
 
-[Ultralytics](https://www.ultralytics.com) is dedicated to the continuous enhancement of the user experience and the capabilities of our Python package, including the advanced YOLO models we develop. Our approach involves the gathering of anonymized usage statistics and crash reports, helping us identify opportunities for improvement and ensuring the reliability of our software. This transparency document outlines what data we collect, its purpose, and the choice you have regarding this data collection.
+[Ultralytics](https://www.ultralytics.com) continuously improves the user experience and capabilities of our Python package, including the YOLO models we develop. To do this, we gather anonymized usage statistics and crash reports that help us identify opportunities for improvement and keep our software reliable. This transparency document outlines what data we collect, its purpose, and the choice you have regarding this data collection.
 
 ## Anonymized Google Analytics
 
@@ -38,7 +38,7 @@ We take several measures to ensure the privacy and security of the data you entr
 
 ## Sentry Crash Reporting
 
-[Sentry](https://sentry.io/welcome/) is a developer-centric error tracking software that aids in identifying, diagnosing, and resolving issues in real-time, ensuring the robustness and reliability of applications. Within our package, it plays a crucial role by providing insights through crash reporting, significantly contributing to the stability and ongoing refinement of our software.
+[Sentry](https://sentry.io/welcome/) is an error-tracking service that helps developers identify, diagnose, and resolve issues in real time. Within our package, Sentry crash reports help us improve the stability of our software.
 
 !!! note
 
@@ -46,10 +46,10 @@ We take several measures to ensure the privacy and security of the data you entr
 
 ### What We Collect
 
-If the `sentry-sdk` Python package is pre-installed on your system a crash event may send the following information:
+Crash reports are sent only when the `sentry-sdk` package is already installed, `sync=True` in your settings, Ultralytics is installed from pip (not a git clone), and the crash occurs in a `yolo` CLI command. A crash report may include:
 
-- **Crash Logs**: Detailed reports on the application's condition at the time of a crash, which are vital for our debugging efforts.
-- **Error Messages**: We record error messages generated during the operation of our package to understand and resolve potential issues quickly.
+- **Error Messages and Stack Traces**: The exception message and the stack trace at the time of the crash.
+- **Runtime Context**: The Ultralytics version, operating system/environment, install method, an anonymized installation ID, the `yolo` executable path, the machine hostname, and installed Python package versions.
 
 To learn more about how Sentry handles data, please visit [Sentry's Privacy Policy](https://sentry.io/privacy/).
 
@@ -60,8 +60,8 @@ To learn more about how Sentry handles data, please visit [Sentry's Privacy Poli
 
 ### Privacy Considerations
 
-- **Sensitive Information**: We ensure that crash logs are scrubbed of any personally identifiable or sensitive user data, safeguarding the confidentiality of your information.
-- **Controlled Collection**: Our crash reporting mechanism is meticulously calibrated to gather only what is essential for troubleshooting while respecting user privacy.
+- **Excluded Data**: Local variables and command-line options are not included, and keyboard interrupts, missing-file errors, and out-of-memory errors are never reported. Error messages and stack traces can still contain file paths from your system.
+- **Controlled Collection**: Crash reporting is limited to the crash context above, and it is disabled whenever `sync=False`.
 
 ## Disabling Data Collection
 
@@ -71,7 +71,7 @@ To opt out of sending analytics and crash reports, you can simply set `sync=Fals
 
 ### Inspecting Settings
 
-To gain insight into the current configuration of your settings, you can view them directly:
+You can view your current settings directly:
 
 !!! example "View settings"
 
@@ -143,7 +143,7 @@ If you have any questions or concerns about our data collection practices, pleas
 
 ### How does Ultralytics ensure the privacy of the data it collects?
 
-Ultralytics prioritizes user privacy through several key measures. First, all data collected via Google Analytics and Sentry is anonymized to ensure that no personally identifiable information (PII) is gathered. Secondly, data is analyzed in aggregate form, allowing us to observe patterns without identifying individual user activities. Finally, we do not collect any training or inference images, further protecting user data. These measures align with our commitment to transparency and privacy. For more details, visit our [Privacy Considerations](#privacy-considerations) section.
+Ultralytics prioritizes user privacy through [several key measures](#privacy-considerations). First, data collected via Google Analytics is anonymized so that no personally identifiable information (PII) is gathered, and Sentry crash reports exclude local variables and command-line options. Secondly, data is analyzed in aggregate form, allowing us to observe patterns without identifying individual user activities. Finally, we do not collect any training or inference images, further protecting user data. These measures align with our commitment to transparency and privacy.
 
 ### What types of data does Ultralytics collect with Google Analytics?
 
@@ -187,7 +187,7 @@ For more details on modifying your settings, refer to the [Modifying Settings](#
 
 ### How does crash reporting with Sentry work in Ultralytics YOLO?
 
-If the `sentry-sdk` package is pre-installed, Sentry collects detailed crash logs and error messages whenever a crash event occurs. This data helps us diagnose and resolve issues promptly, improving the robustness and reliability of the YOLO Python package. The collected crash logs are scrubbed of any personally identifiable information to protect user privacy. For more information, check the [Sentry Crash Reporting](#sentry-crash-reporting) section.
+If the `sentry-sdk` package is pre-installed, Sentry collects [detailed crash logs and error messages](#sentry-crash-reporting) whenever a crash event occurs. This data helps us diagnose and resolve issues promptly, improving the robustness and reliability of the YOLO Python package. Crash reports exclude local variables and command-line options, but error messages and stack traces can contain file paths, and the runtime context includes the machine hostname; set `sync=False` if that is a concern.
 
 ### Can I inspect my current data collection settings in Ultralytics YOLO?
 

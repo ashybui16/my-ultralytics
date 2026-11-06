@@ -1,6 +1,6 @@
 ---
 comments: true
-description: Learn how to use ClearML for tracking YOLOv5 experiments, data versioning, hyperparameter optimization, and remote execution with ease.
+description: Use ClearML with Ultralytics YOLOv5 for experiment tracking, dataset versioning, hyperparameter optimization, remote execution on agents, and autoscaling.
 keywords: ClearML, YOLOv5, machine learning, experiment tracking, data versioning, hyperparameter optimization, remote execution, ML pipeline
 ---
 
@@ -10,13 +10,13 @@ keywords: ClearML, YOLOv5, machine learning, experiment tracking, data versionin
 
 ## About ClearML
 
-[ClearML](https://clear.ml/) is an [open-source](https://github.com/clearml/clearml) MLOps platform built to streamline machine learning workflows and save engineering time.
+[ClearML](https://clear.ml/) is an [open-source](https://github.com/clearml/clearml) [MLOps](https://www.ultralytics.com/glossary/machine-learning-operations-mlops) platform built to streamline machine learning workflows and save engineering time.
 
-- 🔨 Track every YOLOv5 training run in the **experiment manager**.
-- 🔧 Version and access your custom [training data](https://www.ultralytics.com/glossary/training-data) with the integrated ClearML **data versioning tool**.
-- 🔦 **Remotely train and monitor** YOLOv5 runs using the ClearML Agent.
-- 🔬 Find the best mAP with ClearML **hyperparameter optimization**.
-- 🔭 Turn your trained **YOLOv5 model into an API** with a few commands using ClearML Serving.
+- Track every YOLOv5 training run in the **experiment manager**.
+- Version and access your custom [training data](https://www.ultralytics.com/glossary/training-data) with the integrated ClearML **data versioning tool**.
+- **[Remotely train and monitor](https://www.ultralytics.com/blog/remotely-train-and-monitor-yolov5-using-clearml)** YOLOv5 runs using the ClearML Agent.
+- Find the best [mAP](https://www.ultralytics.com/glossary/mean-average-precision-map) with ClearML **hyperparameter optimization**.
+- Turn your trained **YOLOv5 model into an API** with a few commands using ClearML Serving.
 
 Use as many or as few of these tools as you need — start with the experiment manager alone, or chain everything together into a full pipeline.
 
@@ -56,13 +56,13 @@ This will enable integration with the YOLOv5 training script. Every training run
 To customize the project and task names, pass `--project` and `--name` to `train.py`. The defaults are `YOLOv5` and `Training`. ClearML uses `/` as a subproject delimiter, so avoid `/` in custom project names.
 
 ```bash
-python train.py --img 640 --batch 16 --epochs 3 --data coco8.yaml --weights yolov5s.pt --cache
+python train.py --img 640 --batch 16 --epochs 3 --data coco128.yaml --weights yolov5s.pt --cache
 ```
 
 Or with custom names:
 
 ```bash
-python train.py --project my_project --name my_training --img 640 --batch 16 --epochs 3 --data coco8.yaml --weights yolov5s.pt --cache
+python train.py --project my_project --name my_training --img 640 --batch 16 --epochs 3 --data coco128.yaml --weights yolov5s.pt --cache
 ```
 
 Each run captures:
@@ -72,14 +72,14 @@ Each run captures:
 - Hyperparameters
 - Model checkpoints (use `--save-period n` to save every `n` epochs)
 - Console output
-- Scalars (mAP_0.5, mAP_0.5:0.95, precision, recall, losses, learning rates)
+- Scalars (mAP<sub>50</sub>, mAP<sub>50-95</sub>, precision, recall, losses, learning rates)
 - Machine details, runtime, and creation date
 - Generated plots such as the label correlogram and [confusion matrix](https://www.ultralytics.com/glossary/confusion-matrix)
 - Images with bounding boxes per [epoch](https://www.ultralytics.com/glossary/epoch)
 - Mosaic visualizations per epoch
 - Validation images per epoch
 
-Everything appears in the ClearML UI so you can monitor training in one place. Add custom columns (for example, `mAP_0.5`) to sort by the best-performing model, or select multiple experiments to compare them side by side.
+Everything appears in the ClearML UI so you can monitor training in one place. Add custom columns (for example, `mAP50`) to sort by the best-performing model, or select multiple experiments to compare them side by side.
 
 Keep reading for [hyperparameter optimization](https://www.ultralytics.com/glossary/hyperparameter-tuning) and remote execution.
 
@@ -184,9 +184,9 @@ clearml-agent daemon --queue QUEUES_TO_LISTEN_TO [--docker]
 
 With an agent running, you can assign it work directly from the UI:
 
-- 🪄 Right-click an experiment and clone it.
-- 🎯 Edit its hyperparameters.
-- ⏳ Right-click the cloned task and enqueue it to a target queue.
+- Right-click an experiment and clone it.
+- Edit its hyperparameters.
+- Right-click the cloned task and enqueue it to a target queue.
 
 <video src="https://cdn.ul.run/v/77d92db23bc4078de3689d6ef162325a.mp4" autoplay loop muted playsinline aria-label="Enqueue a task from the UI"></video>
 
@@ -199,11 +199,12 @@ You can also flag a running script for remote execution programmatically by addi
 # Loggers
 data_dict = None
 if RANK in {-1, 0}:
-    loggers = Loggers(save_dir, weights, opt, hyp, LOGGER)  # loggers instance
+    loggers = Loggers(save_dir=save_dir, weights=weights, opt=opt, hyp=hyp, logger=LOGGER)
     if loggers.clearml:
         loggers.clearml.task.execute_remotely(queue="my_queue")  # <------ ADD THIS LINE
-        # data_dict is None unless the user selected a ClearML dataset, in which case ClearML fills it in.
-        data_dict = loggers.clearml.data_dict
+    # ...
+    # Process custom dataset artifact link
+    data_dict = loggers.remote_dataset
 # ...
 ```
 
@@ -215,7 +216,7 @@ ClearML ships with [autoscalers](https://docs.clear.ml/docs/latest/docs/guides/s
 
 Watch the getting-started video below:
 
-[![Watch the video](https://cdn.ul.run/i/4b345f5a6f3554421759f8af9ed2b267.avif)](https://youtu.be/j4XVMAaUt3E)
+[![ClearML autoscaler getting-started video thumbnail](https://cdn.ul.run/i/4b345f5a6f3554421759f8af9ed2b267.avif)](https://youtu.be/j4XVMAaUt3E)
 
 ## Learn More
 

@@ -1,17 +1,17 @@
 ---
 comments: true
-description: Master instance segmentation using YOLO26. Learn how to detect, segment and outline objects in images with detailed guides and examples.
+description: Instance segmentation with Ultralytics YOLO26. Explore COCO-pretrained models, then train, validate, predict, and export per-object mask models in Python or CLI.
 keywords: instance segmentation, YOLO26, object detection, image segmentation, machine learning, deep learning, computer vision, COCO dataset, Ultralytics
 model_name: yolo26n-seg
 ---
 
 # Instance Segmentation with Ultralytics YOLO {#instance-segmentation}
 
-<img width="1024" src="https://cdn.ul.run/i/4f347873b4473e2ccab72d0df4350e7e.avif" alt="Ultralytics YOLO instance segmentation examples">
+<img width="1024" src="https://cdn.ul.run/i/cf52e30c0986666e4e850b17e0514a54.avif" alt="Ultralytics YOLO instance segmentation examples">
 
 [Instance segmentation](https://www.ultralytics.com/glossary/instance-segmentation) goes a step further than object detection and involves identifying individual objects in an image and segmenting them from the rest of the image.
 
-The output of an instance segmentation model is a set of masks or contours that outline each object in the image, along with class labels and confidence scores for each object. Instance segmentation is useful when you need to know not only where objects are in an image, but also what their exact shape is.
+The output of an instance segmentation model is a set of masks or contours that outline each object in the image, along with class labels and confidence scores for each object. Instance segmentation is useful when you need to know not only where objects are in an image, but also what their [exact shape](https://academy.ultralytics.com/courses/computer-vision-foundations/instance-segmentation) is.
 
 <p align="center">
   <br>
@@ -26,18 +26,18 @@ The output of an instance segmentation model is a set of masks or contours that 
 
 !!! tip
 
-    YOLO26 Segment models use the `-seg` suffix, i.e., `yolo26n-seg.pt`, and are pretrained on [COCO](https://github.com/ultralytics/ultralytics/blob/main/ultralytics/cfg/datasets/coco.yaml).
+    YOLO26 Segment models use the `-seg` suffix, e.g., `yolo26n-seg.pt`, and are pretrained on [COCO](https://github.com/ultralytics/ultralytics/blob/main/ultralytics/cfg/datasets/coco.yaml).
 
-## [Models](https://github.com/ultralytics/ultralytics/tree/main/ultralytics/cfg/models/26)
+## Models
 
-YOLO26 pretrained Segment models are shown here. Detect, Segment and Pose models are pretrained on the [COCO](https://github.com/ultralytics/ultralytics/blob/main/ultralytics/cfg/datasets/coco.yaml) dataset, [Semantic](semantic.md) models are pretrained on [Cityscapes](../datasets/semantic/cityscapes.md), and Classify models are pretrained on the [ImageNet](https://github.com/ultralytics/ultralytics/blob/main/ultralytics/cfg/datasets/ImageNet.yaml) dataset.
+YOLO26 Segment models pretrained on the [COCO](../datasets/segment/coco.md) dataset are shown below.
 
 [Models](https://github.com/ultralytics/ultralytics/tree/main/ultralytics/cfg/models) download automatically from the latest Ultralytics [release](https://github.com/ultralytics/assets/releases) on first use.
 
 {% include "macros/yolo-seg-perf.md" %}
 
-- **mAP<sup>val</sup>** values are for single-model single-scale on [COCO val2017](https://cocodataset.org/) dataset. <br>Reproduce by `yolo val segment data=coco.yaml device=0 nms=False`
-- **Speed** averaged over COCO val images using an [Amazon EC2 P4d](https://aws.amazon.com/ec2/instance-types/p4/) instance. <br>Reproduce by `yolo val segment data=coco.yaml batch=1 device=0|cpu nms=False`
+- **mAP<sup>val</sup>** values are for single-model single-scale on [COCO val2017](https://cocodataset.org/) dataset. <br>Reproduce with `yolo segment val data=coco.yaml device=0 nms=False`
+- **Speed** averaged over COCO val images with ONNX on CPU and TensorRT10 on an NVIDIA T4 GPU. <br>Reproduce with `yolo segment val data=coco.yaml batch=1 device=0|cpu nms=False`
 - **Params** and **FLOPs** values are for fused models after Conv/BatchNorm folding and removal of the unused detection branch. Pretrained checkpoints retain the full training architecture and may show higher counts.
 
 These checkpoints segment the 80 COCO classes. To segment categories outside that list without retraining, see [YOLOE](../models/yoloe.md), which takes the classes as a text prompt, a visual example, or a built-in vocabulary.
@@ -46,7 +46,7 @@ See the [unreleased YOLO27 preview](../models/yolo27.md#performance-metrics) for
 
 ## Train
 
-Train YOLO26n-seg on the COCO8-seg dataset for 100 [epochs](https://www.ultralytics.com/glossary/epoch) at image size 640. For a full list of available arguments see the [Configuration](../usage/cfg.md) page.
+[Train](../usage/cfg.md#train-settings) a [YOLO26n-seg](https://platform.ultralytics.com/ultralytics/yolo26/yolo26n-seg) model on the [COCO8-seg](https://platform.ultralytics.com/ultralytics/datasets/coco8-seg) dataset for 100 [epochs](https://www.ultralytics.com/glossary/epoch) at image size 640.
 
 !!! example
 
@@ -85,7 +85,7 @@ YOLO segmentation dataset format can be found in detail in the [Dataset Guide](.
 
 ## Val
 
-Validate trained YOLO26n-seg model [accuracy](https://www.ultralytics.com/glossary/accuracy) on the COCO8-seg dataset. No arguments are needed as the `model` retains its training `data` and arguments as model attributes.
+Validate trained YOLO26n-seg model accuracy, measured as box and mask [mean average precision (mAP)](https://www.ultralytics.com/glossary/mean-average-precision-map). No arguments are needed, as the `model` retains its training `data` and arguments as model attributes: `path/to/best.pt` from the [Train](#train) example validates on COCO8-seg. Official weights record a training dataset path that doesn't exist on your machine, so they fall back to the task default `coco8-seg.yaml` with a warning. Pass `data` to validate on another dataset.
 
 !!! example
 
@@ -103,20 +103,22 @@ Validate trained YOLO26n-seg model [accuracy](https://www.ultralytics.com/glossa
         metrics.box.map  # map50-95(B)
         metrics.box.map50  # map50(B)
         metrics.box.map75  # map75(B)
-        metrics.box.maps  # a list containing mAP50-95(B) for each category
+        metrics.box.maps  # mAP50-95(B) per class; classes absent from the val set hold the overall mAP(B)
+        metrics.box.ap_class_index  # class indices that were actually evaluated
         metrics.box.image_metrics  # per-image metrics dictionary for det with precision, recall, F1, TP, FP, and FN
         metrics.seg.map  # map50-95(M)
         metrics.seg.map50  # map50(M)
         metrics.seg.map75  # map75(M)
-        metrics.seg.maps  # a list containing mAP50-95(M) for each category
+        metrics.seg.maps  # mAP50-95(M) per class; classes absent from the val set hold the overall mAP(M)
+        metrics.seg.ap_class_index  # class indices that were actually evaluated
         metrics.seg.image_metrics  # per-image metrics dictionary for seg with precision, recall, F1, TP, FP, and FN
         ```
 
     === "CLI"
 
         ```bash
-        yolo segment val model=yolo26n-seg.pt  # val official model
-        yolo segment val model=path/to/best.pt # val custom model
+        yolo segment val model=yolo26n-seg.pt data=coco8-seg.yaml     # val official model
+        yolo segment val model=path/to/best.pt data=path/to/data.yaml # val custom model
         ```
 
 ## Predict
@@ -169,11 +171,12 @@ each detected instance has its own binary mask, class, confidence, and box.
 
 For task-specific `Results` fields across every task, see the [Predict Results by Task](../modes/predict.md#results-by-task) section.
 
-### How This Differs from Semantic Segmentation
+### Instance vs Semantic Segmentation
 
 Instance segmentation is object-level segmentation: two cars produce two masks, two boxes, and two confidence scores.
 [Semantic segmentation](semantic.md) is pixel-level classification: those same cars become pixels with the same class ID
-in one image-sized class map, with no per-object boxes, confidences, or default polygon list.
+in one image-sized class map, with no per-object boxes, confidences, or default polygon list. See the
+[field-by-field comparison](semantic.md#instance-vs-semantic-segmentation) on the semantic segmentation page.
 
 ## Export
 
@@ -188,7 +191,7 @@ Export a YOLO26n-seg model to a different format like ONNX, CoreML, etc.
 
         # Load a model
         model = YOLO("yolo26n-seg.pt")  # load an official model
-        model = YOLO("path/to/best.pt")  # load a custom-trained model
+        model = YOLO("path/to/best.pt")  # load a custom model
 
         # Export the model
         model.export(format="onnx")
@@ -198,10 +201,10 @@ Export a YOLO26n-seg model to a different format like ONNX, CoreML, etc.
 
         ```bash
         yolo export model=yolo26n-seg.pt format=onnx  # export official model
-        yolo export model=path/to/best.pt format=onnx # export custom-trained model
+        yolo export model=path/to/best.pt format=onnx # export custom model
         ```
 
-Available YOLO26-seg export formats are in the table below. You can export to any format using the `format` argument, i.e., `format='onnx'` or `format='engine'`. You can predict or validate directly on exported models, i.e., `yolo predict model=yolo26n-seg.onnx`. Usage examples are shown for your model after export completes.
+Available YOLO26-seg export formats are in the table below. You can export to any format using the `format` argument, e.g., `format='onnx'` or `format='engine'`. You can predict or validate directly on exported models, e.g., `yolo predict model=yolo26n-seg.onnx`. Usage examples are shown for your model after export completes.
 
 !!! note
 
@@ -215,7 +218,7 @@ See full `export` details in the [Export](../modes/export.md) page.
 
 ### How do I train a YOLO26 segmentation model on a custom dataset?
 
-To train a YOLO26 segmentation model on a custom dataset, you first need to prepare your dataset in the YOLO segmentation format. You can use the built-in [`convert_coco`](../guides/coco-to-yolo.md) utility to convert COCO JSON datasets. Once your dataset is ready, you can train the model using Python or CLI commands:
+To [train a YOLO26 segmentation model on a custom dataset](https://www.ultralytics.com/blog/how-to-custom-train-ultralytics-yolo26-for-instance-segmentation), you first need to prepare your dataset in the YOLO segmentation format. You can use the built-in [`convert_coco`](../guides/coco-to-yolo.md) utility to convert COCO JSON datasets. Once your dataset is ready, you can train the model using Python or CLI commands:
 
 !!! example
 
@@ -239,13 +242,13 @@ To train a YOLO26 segmentation model on a custom dataset, you first need to prep
 
 Check the [Configuration](../usage/cfg.md) page for more available arguments.
 
-### What is the difference between [object detection](https://www.ultralytics.com/glossary/object-detection) and instance segmentation in YOLO26?
+### What is the difference between object detection and instance segmentation in YOLO26?
 
-Object detection identifies and localizes objects within an image by drawing bounding boxes around them, whereas instance segmentation not only identifies the bounding boxes but also delineates the exact shape of each object. YOLO26 instance segmentation models provide masks or contours that outline each detected object, which is particularly useful for tasks where knowing the precise shape of objects is important, such as medical imaging or autonomous driving.
+[Object detection](https://www.ultralytics.com/glossary/object-detection) identifies and localizes objects within an image by drawing bounding boxes around them, whereas instance segmentation not only identifies the bounding boxes but also delineates the exact shape of each object. YOLO26 instance segmentation models provide masks or contours that outline each detected object, which is particularly useful for tasks where knowing the precise shape of objects is important, such as medical imaging or autonomous driving.
 
 ### Why use YOLO26 for instance segmentation?
 
-Ultralytics YOLO26 is a state-of-the-art model recognized for its high accuracy and real-time performance, making it ideal for instance segmentation tasks. YOLO26 Segment models come pretrained on the [COCO dataset](https://github.com/ultralytics/ultralytics/blob/main/ultralytics/cfg/datasets/coco.yaml), ensuring robust performance across a variety of objects. Additionally, YOLO supports training, validation, prediction, and export functionalities with seamless integration, making it highly versatile for both research and industry applications.
+Ultralytics YOLO26 combines high accuracy with real-time inference speed, which suits instance segmentation on video streams and edge devices. YOLO26 Segment models come pretrained on the [COCO dataset](https://github.com/ultralytics/ultralytics/blob/main/ultralytics/cfg/datasets/coco.yaml), so they segment 80 common object classes out of the box and provide a strong starting point for fine-tuning on custom data. The same `YOLO` API covers training, validation, prediction, and export for both research and industry applications.
 
 ### How do I load and validate a pretrained YOLO segmentation model?
 
@@ -270,10 +273,10 @@ Loading and validating a pretrained YOLO segmentation model is straightforward. 
     === "CLI"
 
         ```bash
-        yolo segment val model=yolo26n-seg.pt
+        yolo segment val model=yolo26n-seg.pt data=coco8-seg.yaml
         ```
 
-These steps will provide you with validation metrics like [Mean Average Precision](https://www.ultralytics.com/glossary/mean-average-precision-map) (mAP), crucial for assessing model performance.
+These steps will provide you with validation metrics like mean average precision (mAP), the standard measure of segmentation performance.
 
 ### How can I export a YOLO segmentation model to ONNX format?
 
